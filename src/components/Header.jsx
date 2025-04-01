@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { logout } from "../store/userSlice";
 import logo from "../assets/logocinema.png";
-import { FaBars, FaSearch, FaUserCircle } from "react-icons/fa";
+import { FaBars, FaSearch, FaUserCircle, FaTicketAlt } from "react-icons/fa";
 
 const Header = () => {
     const [activeMenu, setActiveMenu] = useState("");
@@ -86,8 +86,12 @@ const Header = () => {
                         {isMovieDropdownOpen && (
                             <div className="absolute left-0 top-full mt-2 bg-gray-800 text-white rounded-lg shadow-lg w-40 z-50">
                                 <ul className="py-2">
-                                    <li className="px-4 py-2 hover:bg-gray-700">Phim sắp chiếu</li>
-                                    <li className="px-4 py-2 hover:bg-gray-700">Phim đang chiếu</li>
+                                    <li className="px-4 py-2 hover:bg-gray-700">
+                                        <Link to="/" className="block w-full">Phim đang chiếu</Link>
+                                    </li>
+                                    <li className="px-4 py-2 hover:bg-gray-700">
+                                        <Link to="/" className="block w-full">Phim sắp chiếu</Link>
+                                    </li>
                                 </ul>
                             </div>
                         )}
@@ -98,6 +102,14 @@ const Header = () => {
                     >
                         Rạp
                     </span>
+                    
+                    {isAuthenticated && (
+                        <Link to="/user/bookings" className="relative group hover:text-yellow-400">
+                            <span className="flex items-center">
+                                <FaTicketAlt className="mr-1" /> Vé của tôi
+                            </span>
+                        </Link>
+                    )}
                 </nav>
                 {isMobileMenuOpen && (
                     <div className="absolute top-full left-0 w-full bg-gray-900 text-white md:hidden flex flex-col items-center py-4 space-y-4 z-50">
@@ -107,6 +119,11 @@ const Header = () => {
                         <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-yellow-400">
                             Rạp
                         </Link>
+                        {isAuthenticated && (
+                            <Link to="/user/bookings" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-yellow-400">
+                                Vé của tôi
+                            </Link>
+                        )}
                         {isAuthenticated ? (
                             <>
                                 {role === "admin" && (
@@ -169,6 +186,11 @@ const Header = () => {
                                     {isAuthenticated ? (
                                         <>
                                             <li className="px-4 py-2 text-center">{username}</li>
+                                            <li className="px-4 py-2 hover:bg-gray-700">
+                                                <Link to="/user/bookings" className="block w-full">
+                                                    Vé của tôi
+                                                </Link>
+                                            </li>
                                             {role === "admin" && (
                                                 <li className="px-4 py-2 hover:bg-gray-700">
                                                     <Link to="/admin" className="block w-full">
