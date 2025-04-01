@@ -28,16 +28,15 @@ const SeatManagement = () => {
         setLoading(true);
         try {
             const response = await apiSeats.getAllSeats();
-            console.log("Phản hồi từ API getAllSeats:", response);
-            if (response.content) {
-                setSeats(response.content.seats); // Giả sử API trả về mảng seats trong content
-            } else {
-                console.error("Không tìm thấy dữ liệu seats:", response);
-                setSeats([]);
-            }
+            console.log("Full Seats Response:", response);
+    
+            const seatsData = response.content || response;
+            console.log("Processed Seats Data:", seatsData);
+            
+            setSeats(seatsData);
         } catch (error) {
+            console.error("Error fetching seats:", error);
             message.error(error.message || "Lỗi khi lấy danh sách ghế");
-            console.error("Lỗi fetchSeats:", error);
             setSeats([]);
         } finally {
             setLoading(false);
@@ -200,42 +199,40 @@ const SeatManagement = () => {
             dataIndex: "screenId",
             key: "screenId",
             render: (screenId) => {
-                const screen = screens.find((s) => s._id === screenId);
-                return screen ? screen.name : "N/A";
+                const screen = screens.find(s => s._id === screenId);
+                return screen ? screen.name : screenId;
             },
         },
         {
             title: "Hàng",
             dataIndex: "row",
             key: "row",
-            render: (row) => row || "N/A",
         },
         {
             title: "Số ghế",
             dataIndex: "seatNumber",
             key: "seatNumber",
-            render: (seatNumber) => seatNumber || "N/A",
         },
         {
             title: "Loại ghế",
             dataIndex: "seatType",
             key: "seatType",
-            render: (seatType) => seatType || "N/A",
         },
         {
             title: "Lịch chiếu",
             dataIndex: "showtimeId",
             key: "showtimeId",
             render: (showtimeId) => {
-                const showtime = showtimes.find((st) => st._id === showtimeId);
-                return showtime ? new Date(showtime.startTime).toLocaleString() : "N/A";
+                const showtime = showtimes.find(st => st._id === showtimeId);
+                return showtime 
+                    ? new Date(showtime.startTime).toLocaleString() 
+                    : showtimeId;
             },
         },
         {
             title: "Trạng thái",
             dataIndex: "status",
             key: "status",
-            render: (status) => status || "N/A",
         },
         {
             title: "Hành động",
