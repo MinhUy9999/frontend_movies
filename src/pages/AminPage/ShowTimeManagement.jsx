@@ -200,25 +200,25 @@ const ShowtimeManagement = () => {
             title: "Phim",
             dataIndex: "movieId",
             key: "movieId",
-            render: (movieId) => {
-                const movie = movies.find((m) => m._id === movieId);
-                return movie ? movie.title : "N/A";
+            render: (movieData) => {
+                // Kiểm tra nếu movieData là object và có thuộc tính title
+                return movieData && movieData.title ? movieData.title : "N/A";
             },
         },
         {
             title: "Màn hình",
             dataIndex: "screenId",
             key: "screenId",
-            render: (screenId) => {
-                const screen = screens.find((s) => s._id === screenId);
-                return screen ? screen.name : "N/A";
+            render: (screenData) => {
+                // Kiểm tra nếu screenData là object và có thuộc tính name
+                return screenData && screenData.name ? screenData.name : "N/A";
             },
         },
         {
             title: "Thời gian bắt đầu",
             dataIndex: "startTime",
             key: "startTime",
-            render: (startTime) => (startTime ? new Date(startTime).toLocaleString() : "N/A"),
+            render: (startTime) => startTime ? new Date(startTime).toLocaleString() : "N/A",
         },
         {
             title: "Thời gian kết thúc",
