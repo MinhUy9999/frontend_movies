@@ -80,23 +80,6 @@ const BookingPage = () => {
     }
   }, [showtimeId, navigate]);
   
-  // Calculate total amount when seats change
-  useEffect(() => {
-    if (showtime && selectedSeats.length > 0) {
-      let total = 0;
-      
-      // You may need to fetch seat details to get seat types and prices
-      // For now, we'll use a standard price from the showtime
-      if (showtime.price && showtime.price.standard) {
-        total = selectedSeats.length * showtime.price.standard;
-      }
-      
-      setTotalAmount(total);
-    } else {
-      setTotalAmount(0);
-    }
-  }, [selectedSeats, showtime]);
-  
   // Listen for booking-related WebSocket events
   useEffect(() => {
     const handleBookingReserved = (data) => {
@@ -171,6 +154,27 @@ const BookingPage = () => {
   // Handle seat selection
   const handleSeatSelection = (seats) => {
     setSelectedSeats(seats);
+    
+    // Calculate total amount based on seat types
+    if (showtime && showtime.price) {
+      let total = 0;
+      seats.forEach(seatId => {
+        // Extract row letter (first character) to determine seat type
+        const rowLetter = seatId.charAt(0);
+        let seatType = 'standard';
+        
+        // Cập nhật loại ghế theo quy định mới
+        if (['D', 'E', 'F'].includes(rowLetter)) {
+          seatType = 'premium';
+        } else if (['G', 'H', 'I'].includes(rowLetter)) {
+          seatType = 'vip';
+        }
+        
+        total += showtime.price[seatType] || 0;
+      });
+      
+      setTotalAmount(total);
+    }
   };
   
   // Create booking
@@ -309,8 +313,21 @@ const BookingPage = () => {
     }
   };
   
+  // Format currency
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('vi-VN', { 
+      style: 'currency', 
+      currency: 'VND',
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+  
   if (loading && !showtime) {
-    return <div className="flex justify-center my-8">Loading...</div>;
+    return (
+      <div className="flex justify-center my-8">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-600"></div>
+      </div>
+    );
   }
   
   return (
@@ -325,7 +342,7 @@ const BookingPage = () => {
       
       {/* Countdown timer when booking is active */}
       {bookingId && countdown > 0 && currentStep === 1 && (
-        <div className="mb-4 flex items-center text-yellow-600">
+        <div className="mb-4 bg-yellow-50 p-3 rounded-lg flex items-center text-yellow-700">
           <ClockCircleOutlined className="mr-2" />
           <span>Time remaining to complete payment: {formatCountdown()}</span>
         </div>
@@ -353,16 +370,12 @@ const BookingPage = () => {
               <h3 className="text-lg font-semibold mb-2">Booking Summary</h3>
               <div className="flex justify-between mb-2">
                 <span>Selected Seats:</span>
-                <span>{selectedSeats.length > 0 ? selectedSeats.length : 'None'}</span>
-              </div>
-              <div className="flex justify-between mb-2">
-                <span>Price per Seat:</span>
-                <span>{showtime?.price?.standard || 0} VND</span>
+                <span>{selectedSeats.length > 0 ? selectedSeats.join(', ') : 'None'}</span>
               </div>
               <Divider className="my-2" />
               <div className="flex justify-between font-bold">
                 <span>Total:</span>
-                <span>{totalAmount} VND</span>
+                <span>{formatCurrency(totalAmount)}</span>
               </div>
             </div>
           </div>
@@ -373,6 +386,7 @@ const BookingPage = () => {
               onClick={handleCreateBooking} 
               disabled={selectedSeats.length === 0}
               loading={loading}
+              size="large"
             >
               Continue to Payment
             </Button>
@@ -387,11 +401,11 @@ const BookingPage = () => {
               form={form}
               layout="vertical"
               onFinish={handlePayment}
+              initialValues={{ paymentMethod }}
             >
               <Form.Item
                 name="paymentMethod"
                 label="Payment Method"
-                initialValue={paymentMethod}
                 rules={[{ required: true, message: 'Please select a payment method' }]}
               >
                 <RadioGroup onChange={e => setPaymentMethod(e.target.value)}>
@@ -405,13 +419,21 @@ const BookingPage = () => {
               <div className="mt-6 bg-gray-100 p-4 rounded-lg">
                 <h3 className="text-lg font-semibold mb-2">Order Summary</h3>
                 <div className="flex justify-between mb-2">
+                  <span>Movie:</span>
+                  <span>{movie?.title || 'Movie'}</span>
+                </div>
+                <div className="flex justify-between mb-2">
+                  <span>Showtime:</span>
+                  <span>{showtime ? new Date(showtime.startTime).toLocaleString() : 'Showtime'}</span>
+                </div>
+                <div className="flex justify-between mb-2">
                   <span>Selected Seats:</span>
-                  <span>{selectedSeats.length}</span>
+                  <span>{selectedSeats.join(', ')}</span>
                 </div>
                 <Divider className="my-2" />
                 <div className="flex justify-between font-bold">
                   <span>Total:</span>
-                  <span>{totalAmount} VND</span>
+                  <span>{formatCurrency(totalAmount)}</span>
                 </div>
               </div>
               
@@ -419,7 +441,7 @@ const BookingPage = () => {
                 <Button className="mr-4" onClick={() => setCurrentStep(0)}>
                   Back
                 </Button>
-                <Button type="primary" htmlType="submit" loading={loading}>
+                <Button type="primary" htmlType="submit" loading={loading} size="large">
                   Complete Payment
                 </Button>
               </div>
@@ -438,30 +460,29 @@ const BookingPage = () => {
             <p className="text-gray-600 mb-6">
               Your booking has been successfully confirmed. You will receive an email with your booking details.
             </p>
-            
+
             <Card className="mb-6 text-left">
               <h3 className="text-lg font-semibold mb-2">Booking Details</h3>
               <p><strong>Movie:</strong> {movie?.title || 'Movie'}</p>
               <p><strong>Theater:</strong> {theater?.name || 'Theater'}</p>
               <p><strong>Screen:</strong> {screen?.name || 'Screen'}</p>
               <p><strong>Time:</strong> {showtime ? new Date(showtime.startTime).toLocaleString() : 'Showtime'}</p>
-              <p><strong>Seats:</strong> {selectedSeats.length}</p>
-              <p><strong>Total Amount:</strong> {totalAmount} VND</p>
+              <p><strong>Seats:</strong> {selectedSeats.join(', ')}</p>
+              <p><strong>Total Amount:</strong> {formatCurrency(totalAmount)}</p>
             </Card>
-            
+
             <div className="flex justify-center">
-              <Button type="primary" onClick={() => navigate('/user/bookings')}>
+              <Button type="primary" onClick={() => navigate('/user/bookings')} size="large">
                 View My Bookings
               </Button>
-              <Button className="ml-4" onClick={() => navigate('/')}>
+              <Button className="ml-4" onClick={() => navigate('/')} size="large">
                 Return to Home
               </Button>
             </div>
           </div>
         </div>
       )}
-    </div>
-  );
-};
+    </div>   
+)}
 
-export default BookingPage;
+export default BookingPage
