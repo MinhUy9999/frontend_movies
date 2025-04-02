@@ -3,13 +3,13 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { apiMovies } from "../../apis/movieApi";
-import { FaPlay, FaTicketAlt } from "react-icons/fa";
-import { Card, Button, Tabs, message, Divider, Rate } from "antd";
+import { FaPlay } from "react-icons/fa"; // Removed FaTicketAlt
+import { Tabs, message, Divider, Rate } from "antd"; // Removed Card
 import ShowtimeSection from "./ShowtimeSection";
 
 const { TabPane } = Tabs;
 
-const MovieDetail = () => {
+const DetailMovie = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { isAuthenticated } = useSelector(state => state.user);
@@ -18,7 +18,7 @@ const MovieDetail = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedShowtime, setSelectedShowtime] = useState(null);
+    // Removed selectedShowtime state since it's not used
 
     useEffect(() => {
         const fetchMovieDetail = async () => {
@@ -33,7 +33,7 @@ const MovieDetail = () => {
                 setLoading(false);
             }
         };
-        
+
         const fetchShowtimes = async () => {
             try {
                 const response = await apiMovies.getMovieShowtimes(id);
@@ -44,7 +44,7 @@ const MovieDetail = () => {
                 console.error("Lỗi khi lấy lịch chiếu:", error.message);
             }
         };
-        
+
         fetchMovieDetail();
         fetchShowtimes();
     }, [id]);
@@ -56,14 +56,14 @@ const MovieDetail = () => {
     const closeModal = () => {
         setIsModalOpen(false);
     };
-    
+
     const handleShowtimeSelect = (showtimeId) => {
         if (!isAuthenticated) {
             message.warning("Please log in to book tickets");
             navigate("/login");
             return;
         }
-        
+
         navigate(`/booking/${showtimeId}`);
     };
 
@@ -87,7 +87,7 @@ const MovieDetail = () => {
                                 alt={movie.title}
                                 className="w-full rounded-lg shadow-lg object-cover"
                             />
-                            
+
                             <div className="mt-4 flex gap-2">
                                 <button
                                     onClick={openModal}
@@ -97,16 +97,16 @@ const MovieDetail = () => {
                                 </button>
                             </div>
                         </div>
-                        
+
                         {/* Movie Details */}
                         <div className="lg:w-2/3">
                             <h1 className="text-3xl font-bold mb-2">{movie.title}</h1>
-                            
+
                             <div className="flex items-center mb-4">
                                 <Rate disabled defaultValue={movie.rating / 2} allowHalf />
                                 <span className="ml-2 font-medium">{movie.rating}/10</span>
                             </div>
-                            
+
                             <div className="flex flex-wrap gap-2 mb-4">
                                 {movie.genre.map((genre, index) => (
                                     <span key={index} className="bg-gray-200 px-3 py-1 rounded-full text-sm">
@@ -114,7 +114,7 @@ const MovieDetail = () => {
                                     </span>
                                 ))}
                             </div>
-                            
+
                             <Tabs defaultActiveKey="1" className="mb-6">
                                 <TabPane tab="Overview" key="1">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -128,7 +128,7 @@ const MovieDetail = () => {
                                             <p className="text-gray-600">End Date: <span className="font-medium text-black">{new Date(movie.endDate).toLocaleDateString()}</span></p>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="mb-6">
                                         <h2 className="text-xl font-bold mb-2">Description</h2>
                                         <p className="text-gray-800">{movie.description}</p>
@@ -139,7 +139,7 @@ const MovieDetail = () => {
                                         <h2 className="text-xl font-bold mb-2">Director</h2>
                                         <p className="text-gray-800">{movie.director}</p>
                                     </div>
-                                    
+
                                     <div className="mb-6">
                                         <h2 className="text-xl font-bold mb-2">Cast</h2>
                                         <div className="flex flex-wrap gap-2">
@@ -154,13 +154,13 @@ const MovieDetail = () => {
                             </Tabs>
                         </div>
                     </div>
-                    
+
                     {/* Showtimes and Booking */}
                     <Divider className="my-8" />
-                    
-                    <ShowtimeSection 
-                        showtimes={showtimes} 
-                        onShowtimeSelect={handleShowtimeSelect} 
+
+                    <ShowtimeSection
+                        showtimes={showtimes}
+                        onShowtimeSelect={handleShowtimeSelect}
                     />
                 </div>
             ) : (
@@ -177,7 +177,7 @@ const MovieDetail = () => {
                                 onClick={closeModal}
                                 className="text-gray-500 hover:text-gray-700 text-2xl"
                             >
-                                &times;
+                                ×
                             </button>
                         </div>
                         <video
@@ -193,4 +193,4 @@ const MovieDetail = () => {
     );
 };
 
-export default MovieDetail;
+export default DetailMovie;

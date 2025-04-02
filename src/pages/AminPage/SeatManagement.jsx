@@ -1,41 +1,95 @@
 import { useState, useEffect } from "react";
-import { Table, Button, Modal, Form, Input, Select, message, InputNumber, DatePicker } from "antd";
-import { apiSeats } from "../../apis/seatApi"; // Import từ seatApi.js
-import { ScreenApi } from "../../apis/screenApi"; // Import để lấy danh sách màn hình
-import showtimeApi from "../../apis/showtimeApi"; // Import để lấy danh sách lịch chiếu
+import { Table, Button, Modal, Form, Input, Select, message, InputNumber, DatePicker, Badge, Space, Row, Col } from "antd";
+import { PlusOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined } from "@ant-design/icons";
+import { apiSeats } from "../../apis/seatApi";
+import { ScreenApi } from "../../apis/screenApi";
+import showtimeApi from "../../apis/showtimeApi";
 import dayjs from "dayjs";
 
 const { Option } = Select;
+const { confirm } = Modal;
 
 const SeatManagement = () => {
     const [seats, setSeats] = useState([]);
-    const [screens, setScreens] = useState([]); // Danh sách màn hình để chọn
-    const [showtimes, setShowtimes] = useState([]); // Danh sách lịch chiếu để chọn
+    const [screens, setScreens] = useState([]);
+    const [showtimes, setShowtimes] = useState([]);
     const [loading, setLoading] = useState(false);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
     const [selectedSeat, setSelectedSeat] = useState(null);
     const [form] = Form.useForm();
     const [createForm] = Form.useForm();
+    const [pagination, setPagination] = useState({
+        current: 1,
+        pageSize: 10,
+        total: 0
+    });
+    const [filters, setFilters] = useState({
+        screenId: undefined,
+        status: undefined,
+        searchText: ""
+    });
 
     useEffect(() => {
         fetchSeats();
-        fetchScreens(); // Lấy danh sách màn hình
-        fetchShowtimes(); // Lấy danh sách lịch chiếu
-    }, []);
+        fetchScreens();
+        fetchShowtimes();
+    }, [pagination.current, pagination.pageSize, filters]);
+
+    const buildQueryString = () => {
+        const params = new URLSearchParams();
+
+        params.append('page', pagination.current.toString());
+        params.append('limit', pagination.pageSize.toString());
+
+        if (filters.screenId) {
+            params.append('screenId', filters.screenId);
+        }
+
+        if (filters.status) {
+            params.append('status', filters.status);
+        }
+
+        if (filters.searchText) {
+            params.append('search', filters.searchText);
+        }
+
+        return params.toString();
+    };
 
     const fetchSeats = async () => {
         setLoading(true);
         try {
-            const response = await apiSeats.getAllSeats();
-            console.log("Full Seats Response:", response);
-    
-            const seatsData = response.content || response;
-            console.log("Processed Seats Data:", seatsData);
-            
+            const queryString = buildQueryString();
+            console.log("Fetching seats with query:", queryString);
+
+            const response = await apiSeats.getAllSeats(queryString);
+            console.log("Phản hồi từ API getAllSeats:", response);
+
+            // Xử lý dữ liệu tùy thuộc vào cấu trúc phản hồi từ API
+            let seatsData = [];
+            let totalCount = 0;
+
+            if (response.content?.seats) {
+                seatsData = response.content.seats;
+                totalCount = response.content.total || seatsData.length;
+            } else if (Array.isArray(response.content)) {
+                seatsData = response.content;
+                totalCount = seatsData.length;
+            } else if (Array.isArray(response)) {
+                seatsData = response;
+                totalCount = response.length;
+            }
+
+            console.log("Dữ liệu ghế đã xử lý:", seatsData);
+
             setSeats(seatsData);
+            setPagination({
+                ...pagination,
+                total: totalCount
+            });
         } catch (error) {
-            console.error("Error fetching seats:", error);
+            console.error("Lỗi khi lấy danh sách ghế:", error);
             message.error(error.message || "Lỗi khi lấy danh sách ghế");
             setSeats([]);
         } finally {
@@ -78,11 +132,13 @@ const SeatManagement = () => {
     };
 
     const handleDelete = async (id) => {
-        let isModalOpen = true;
-        Modal.confirm({
+        confirm({
             title: "Xác nhận xóa",
+            icon: <ExclamationCircleOutlined />,
             content: "Bạn có chắc chắn muốn xóa ghế này?",
-            okButtonProps: { loading: false },
+            okText: "Xóa",
+            okType: "danger",
+            cancelText: "Hủy",
             async onOk() {
                 try {
                     console.log("Bắt đầu xóa seat với ID:", id);
@@ -91,7 +147,6 @@ const SeatManagement = () => {
                     if (response.statusCode === 200 || response.statusCode === 204) {
                         message.success("Xóa ghế thành công");
                         await fetchSeats();
-                        isModalOpen = false;
                     } else {
                         message.error(`Xóa thất bại, mã trạng thái: ${response.statusCode}`);
                     }
@@ -99,13 +154,6 @@ const SeatManagement = () => {
                     console.error("Lỗi khi xóa:", error);
                     message.error(error.message || "Lỗi khi xóa ghế");
                 }
-            },
-            onCancel() {
-                console.log("Hủy xóa seat với ID:", id);
-                isModalOpen = false;
-            },
-            afterClose() {
-                if (!isModalOpen) Modal.destroyAll();
             },
         });
     };
@@ -117,7 +165,7 @@ const SeatManagement = () => {
             row: seat.row || "",
             seatNumber: seat.seatNumber || 0,
             seatType: seat.seatType || "standard",
-            isActive: seat.isActive || false,
+            isActive: seat.isActive !== false, // Mặc định là true nếu không có giá trị
             showtimeId: seat.showtimeId || "",
             bookingId: seat.bookingId || "",
             status: seat.status || "available",
@@ -190,7 +238,40 @@ const SeatManagement = () => {
     };
 
     const showCreateModal = () => {
+        createForm.resetFields();
+        createForm.setFieldsValue({
+            isActive: true,
+            status: 'available'
+        });
         setIsCreateModalVisible(true);
+    };
+
+    const handleTableChange = (pagination) => {
+        setPagination(pagination);
+    };
+
+    const handleScreenFilter = (value) => {
+        setFilters({ ...filters, screenId: value });
+        setPagination({ ...pagination, current: 1 }); // Reset to first page when filtering
+    };
+
+    const handleStatusFilter = (value) => {
+        setFilters({ ...filters, status: value });
+        setPagination({ ...pagination, current: 1 }); // Reset to first page when filtering
+    };
+
+    const handleSearch = (value) => {
+        setFilters({ ...filters, searchText: value });
+        setPagination({ ...pagination, current: 1 }); // Reset to first page when searching
+    };
+
+    const resetFilters = () => {
+        setFilters({
+            screenId: undefined,
+            status: undefined,
+            searchText: ""
+        });
+        setPagination({ ...pagination, current: 1 });
     };
 
     const columns = [
@@ -217,6 +298,14 @@ const SeatManagement = () => {
             title: "Loại ghế",
             dataIndex: "seatType",
             key: "seatType",
+            render: (seatType) => {
+                switch (seatType) {
+                    case "standard": return "Thường";
+                    case "premium": return "Cao cấp";
+                    case "vip": return "VIP";
+                    default: return seatType;
+                }
+            },
         },
         {
             title: "Lịch chiếu",
@@ -224,8 +313,8 @@ const SeatManagement = () => {
             key: "showtimeId",
             render: (showtimeId) => {
                 const showtime = showtimes.find(st => st._id === showtimeId);
-                return showtime 
-                    ? new Date(showtime.startTime).toLocaleString() 
+                return showtime
+                    ? new Date(showtime.startTime).toLocaleString()
                     : showtimeId;
             },
         },
@@ -233,179 +322,256 @@ const SeatManagement = () => {
             title: "Trạng thái",
             dataIndex: "status",
             key: "status",
+            render: (status) => {
+                switch (status) {
+                    case "available":
+                        return <Badge status="success" text="Còn trống" />;
+                    case "reserved":
+                        return <Badge status="warning" text="Đã đặt tạm" />;
+                    case "booked":
+                        return <Badge status="error" text="Đã đặt" />;
+                    default:
+                        return <Badge status="default" text={status} />;
+                }
+            },
         },
         {
             title: "Hành động",
             key: "action",
             render: (_, record) => (
-                <span>
-                    <Button type="link" onClick={() => handleEdit(record)}>
+                <Space>
+                    <Button
+                        type="primary"
+                        icon={<EditOutlined />}
+                        onClick={() => handleEdit(record)}
+                        size="small"
+                    >
                         Sửa
                     </Button>
-                    <Button type="link" danger onClick={() => handleDelete(record._id)}>
+                    <Button
+                        type="primary"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDelete(record._id)}
+                        size="small"
+                    >
                         Xóa
                     </Button>
-                </span>
+                </Space>
             ),
         },
     ];
 
+    // Form cho cả tạo mới và chỉnh sửa
+    const renderSeatForm = (form, onFinish, title, submitText) => (
+        <Form
+            form={form}
+            layout="vertical"
+            onFinish={onFinish}
+        >
+            <Form.Item name="screenId" label="Màn hình" rules={[{ required: true, message: "Vui lòng chọn màn hình!" }]}>
+                <Select
+                    placeholder="Chọn màn hình"
+                    showSearch
+                    optionFilterProp="children"
+                    filterOption={(input, option) =>
+                        option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                    }
+                >
+                    {screens.map((screen) => (
+                        <Option key={screen._id} value={screen._id}>
+                            {screen.name}
+                        </Option>
+                    ))}
+                </Select>
+            </Form.Item>
+
+            <Form.Item name="row" label="Hàng" rules={[{ required: true, message: "Vui lòng chọn hàng!" }]}>
+                <Select placeholder="Chọn hàng">
+                    {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(row => (
+                        <Option key={row} value={row}>{row}</Option>
+                    ))}
+                </Select>
+            </Form.Item>
+
+            <Form.Item name="seatNumber" label="Số ghế" rules={[{ required: true, message: "Vui lòng nhập số ghế!" }]}>
+                <InputNumber min={1} max={20} style={{ width: "100%" }} />
+            </Form.Item>
+
+            <Form.Item name="seatType" label="Loại ghế" rules={[{ required: true, message: "Vui lòng chọn loại ghế!" }]}>
+                <Select placeholder="Chọn loại ghế">
+                    <Option value="standard">Thường</Option>
+                    <Option value="premium">Cao cấp</Option>
+                    <Option value="vip">VIP</Option>
+                </Select>
+            </Form.Item>
+
+            <Form.Item name="isActive" label="Trạng thái hoạt động" rules={[{ required: true, message: "Vui lòng chọn trạng thái hoạt động!" }]}>
+                <Select>
+                    <Option value={true}>Hoạt động</Option>
+                    <Option value={false}>Không hoạt động</Option>
+                </Select>
+            </Form.Item>
+
+            <Form.Item name="showtimeId" label="Lịch chiếu" rules={[{ required: true, message: "Vui lòng chọn lịch chiếu!" }]}>
+                <Select
+                    placeholder="Chọn lịch chiếu"
+                    showSearch
+                    optionFilterProp="children"
+                    filterOption={(input, option) =>
+                        option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
+                    }
+                >
+                    {showtimes.map((showtime) => (
+                        <Option key={showtime._id} value={showtime._id}>
+                            {new Date(showtime.startTime).toLocaleString()}
+                        </Option>
+                    ))}
+                </Select>
+            </Form.Item>
+
+            <Form.Item name="bookingId" label="ID Đặt vé (nếu có)">
+                <Input placeholder="Nhập ID đặt vé (tùy chọn)" />
+            </Form.Item>
+
+            <Form.Item name="status" label="Trạng thái ghế" rules={[{ required: true, message: "Vui lòng chọn trạng thái ghế!" }]}>
+                <Select placeholder="Chọn trạng thái ghế">
+                    <Option value="available">Còn trống</Option>
+                    <Option value="reserved">Đã đặt tạm</Option>
+                    <Option value="booked">Đã đặt</Option>
+                </Select>
+            </Form.Item>
+
+            <Form.Item name="expiresAt" label="Thời gian hết hạn (nếu có)">
+                <DatePicker
+                    showTime
+                    format="DD/MM/YYYY HH:mm"
+                    style={{ width: "100%" }}
+                    placeholder="Chọn thời gian hết hạn"
+                />
+            </Form.Item>
+
+            <Form.Item>
+                <Space>
+                    <Button type="primary" htmlType="submit">
+                        {submitText}
+                    </Button>
+                    <Button onClick={() => title === "Tạo ghế mới" ? setIsCreateModalVisible(false) : setIsModalVisible(false)}>
+                        Hủy
+                    </Button>
+                </Space>
+            </Form.Item>
+        </Form>
+    );
+
     return (
-        <div>
-            <h2>Quản lý ghế</h2>
-            <Button type="primary" onClick={showCreateModal} style={{ marginBottom: 16 }}>
-                Thêm ghế mới
-            </Button>
+        <div className="p-6">
+            <div className="mb-4">
+                <Row justify="space-between" align="middle">
+                    <Col>
+                        <h2 className="text-2xl font-bold">Quản lý ghế</h2>
+                    </Col>
+                    <Col>
+                        <Space>
+                            <Button
+                                icon={<ReloadOutlined />}
+                                onClick={fetchSeats}
+                            >
+                                Làm mới
+                            </Button>
+                            <Button
+                                type="primary"
+                                icon={<PlusOutlined />}
+                                onClick={showCreateModal}
+                            >
+                                Thêm ghế mới
+                            </Button>
+                        </Space>
+                    </Col>
+                </Row>
+            </div>
+
+            <div className="mb-4 bg-white p-4 rounded shadow">
+                <Row gutter={[16, 16]}>
+                    <Col xs={24} sm={12} md={8} lg={6}>
+                        <Input.Search
+                            placeholder="Tìm kiếm ghế..."
+                            value={filters.searchText}
+                            onChange={(e) => setFilters({ ...filters, searchText: e.target.value })}
+                            onSearch={handleSearch}
+                            style={{ width: '100%' }}
+                            allowClear
+                        />
+                    </Col>
+                    <Col xs={24} sm={12} md={8} lg={6}>
+                        <Select
+                            placeholder="Lọc theo màn hình"
+                            value={filters.screenId}
+                            onChange={handleScreenFilter}
+                            style={{ width: '100%' }}
+                            allowClear
+                        >
+                            {screens.map((screen) => (
+                                <Option key={screen._id} value={screen._id}>
+                                    {screen.name}
+                                </Option>
+                            ))}
+                        </Select>
+                    </Col>
+                    <Col xs={24} sm={12} md={8} lg={6}>
+                        <Select
+                            placeholder="Lọc theo trạng thái"
+                            value={filters.status}
+                            onChange={handleStatusFilter}
+                            style={{ width: '100%' }}
+                            allowClear
+                        >
+                            <Option value="available">Còn trống</Option>
+                            <Option value="reserved">Đã đặt tạm</Option>
+                            <Option value="booked">Đã đặt</Option>
+                        </Select>
+                    </Col>
+                    <Col xs={24} sm={12} md={8} lg={6}>
+                        <Button onClick={resetFilters} style={{ width: '100%' }}>
+                            Đặt lại bộ lọc
+                        </Button>
+                    </Col>
+                </Row>
+            </div>
+
             <Table
                 columns={columns}
                 dataSource={seats}
                 rowKey="_id"
                 loading={loading}
-                pagination={{ pageSize: 10 }}
+                pagination={pagination}
+                onChange={handleTableChange}
+                className="bg-white rounded shadow"
+                scroll={{ x: 'max-content' }}
             />
+
             {/* Modal chỉnh sửa */}
             <Modal
                 title="Chỉnh sửa ghế"
                 open={isModalVisible}
                 onCancel={() => setIsModalVisible(false)}
                 footer={null}
+                width={700}
+                destroyOnClose
             >
-                <Form
-                    form={form}
-                    layout="vertical"
-                    onFinish={handleUpdate}
-                >
-                    <Form.Item name="screenId" label="Màn hình" rules={[{ required: true, message: "Vui lòng chọn màn hình!" }]}>
-                        <Select placeholder="Chọn màn hình">
-                            {screens.map((screen) => (
-                                <Option key={screen._id} value={screen._id}>
-                                    {screen.name}
-                                </Option>
-                            ))}
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="row" label="Hàng" rules={[{ required: true, message: "Vui lòng nhập hàng!" }]}>
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="seatNumber" label="Số ghế" rules={[{ required: true, message: "Vui lòng nhập số ghế!" }]}>
-                        <InputNumber min={1} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item name="seatType" label="Loại ghế" rules={[{ required: true, message: "Vui lòng chọn loại ghế!" }]}>
-                        <Select placeholder="Chọn loại ghế">
-                            <Option value="standard">Standard</Option>
-                            <Option value="premium">Premium</Option>
-                            <Option value="vip">VIP</Option>
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="isActive" label="Trạng thái hoạt động" rules={[{ required: true, message: "Vui lòng chọn trạng thái hoạt động!" }]}>
-                        <Select>
-                            <Option value={true}>Hoạt động</Option>
-                            <Option value={false}>Không hoạt động</Option>
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="showtimeId" label="Lịch chiếu" rules={[{ required: true, message: "Vui lòng chọn lịch chiếu!" }]}>
-                        <Select placeholder="Chọn lịch chiếu">
-                            {showtimes.map((showtime) => (
-                                <Option key={showtime._id} value={showtime._id}>
-                                    {new Date(showtime.startTime).toLocaleString()}
-                                </Option>
-                            ))}
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="bookingId" label="ID Đặt vé (nếu có)">
-                        <Input placeholder="Nhập ID đặt vé (tùy chọn)" />
-                    </Form.Item>
-                    <Form.Item name="status" label="Trạng thái ghế" rules={[{ required: true, message: "Vui lòng chọn trạng thái ghế!" }]}>
-                        <Select placeholder="Chọn trạng thái ghế">
-                            <Option value="reserved">Đã đặt tạm</Option>
-                            <Option value="booked">Đã đặt</Option>
-                            <Option value="available">Còn trống</Option>
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="expiresAt" label="Thời gian hết hạn (nếu có)">
-                        <DatePicker showTime format="DD/MM/YYYY HH:mm" style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item>
-                        <Button type="primary" htmlType="submit">
-                            Cập nhật
-                        </Button>
-                        <Button style={{ marginLeft: 8 }} onClick={() => setIsModalVisible(false)}>
-                            Hủy
-                        </Button>
-                    </Form.Item>
-                </Form>
+                {renderSeatForm(form, handleUpdate, "Chỉnh sửa ghế", "Cập nhật")}
             </Modal>
+
             {/* Modal tạo mới */}
             <Modal
                 title="Tạo ghế mới"
                 open={isCreateModalVisible}
                 onCancel={() => setIsCreateModalVisible(false)}
                 footer={null}
+                width={700}
+                destroyOnClose
             >
-                <Form
-                    form={createForm}
-                    layout="vertical"
-                    onFinish={handleCreate}
-                >
-                    <Form.Item name="screenId" label="Màn hình" rules={[{ required: true, message: "Vui lòng chọn màn hình!" }]}>
-                        <Select placeholder="Chọn màn hình">
-                            {screens.map((screen) => (
-                                <Option key={screen._id} value={screen._id}>
-                                    {screen.name}
-                                </Option>
-                            ))}
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="row" label="Hàng" rules={[{ required: true, message: "Vui lòng nhập hàng!" }]}>
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="seatNumber" label="Số ghế" rules={[{ required: true, message: "Vui lòng nhập số ghế!" }]}>
-                        <InputNumber min={1} style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item name="seatType" label="Loại ghế" rules={[{ required: true, message: "Vui lòng chọn loại ghế!" }]}>
-                        <Select placeholder="Chọn loại ghế">
-                            <Option value="standard">Standard</Option>
-                            <Option value="premium">Premium</Option>
-                            <Option value="vip">VIP</Option>
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="isActive" label="Trạng thái hoạt động" initialValue={true} rules={[{ required: true, message: "Vui lòng chọn trạng thái hoạt động!" }]}>
-                        <Select>
-                            <Option value={true}>Hoạt động</Option>
-                            <Option value={false}>Không hoạt động</Option>
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="showtimeId" label="Lịch chiếu" rules={[{ required: true, message: "Vui lòng chọn lịch chiếu!" }]}>
-                        <Select placeholder="Chọn lịch chiếu">
-                            {showtimes.map((showtime) => (
-                                <Option key={showtime._id} value={showtime._id}>
-                                    {new Date(showtime.startTime).toLocaleString()}
-                                </Option>
-                            ))}
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="bookingId" label="ID Đặt vé (nếu có)">
-                        <Input placeholder="Nhập ID đặt vé (tùy chọn)" />
-                    </Form.Item>
-                    <Form.Item name="status" label="Trạng thái ghế" initialValue="available" rules={[{ required: true, message: "Vui lòng chọn trạng thái ghế!" }]}>
-                        <Select placeholder="Chọn trạng thái ghế">
-                            <Option value="reserved">Đã đặt tạm</Option>
-                            <Option value="booked">Đã đặt</Option>
-                            <Option value="available">Còn trống</Option>
-                        </Select>
-                    </Form.Item>
-                    <Form.Item name="expiresAt" label="Thời gian hết hạn (nếu có)">
-                        <DatePicker showTime format="DD/MM/YYYY HH:mm" style={{ width: "100%" }} />
-                    </Form.Item>
-                    <Form.Item>
-                        <Button type="primary" htmlType="submit">
-                            Tạo mới
-                        </Button>
-                        <Button style={{ marginLeft: 8 }} onClick={() => setIsCreateModalVisible(false)}>
-                            Hủy
-                        </Button>
-                    </Form.Item>
-                </Form>
+                {renderSeatForm(createForm, handleCreate, "Tạo ghế mới", "Tạo mới")}
             </Modal>
         </div>
     );

@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+// src/components/admin/ScreenSeatEditor.jsx
+import { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { ScreenApi } from '../apis/screenApi';
-import { Button, Select, Input, Checkbox, message } from 'antd';
+import { Button, Select, Input, message } from 'antd';
 
 const { Option } = Select;
 
+// Component cho phép chỉnh sửa bố cục ghế ngồi trong phòng chiếu
 const ScreenSeatEditor = ({ screenId }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -17,34 +20,34 @@ const ScreenSeatEditor = ({ screenId }) => {
     vipRows: []
   });
 
-  // Load screen info and current layout
+  // Tải thông tin phòng chiếu và bố cục hiện tại
   useEffect(() => {
     const fetchScreenInfo = async () => {
       if (!screenId) return;
-      
+
       try {
         setLoading(true);
-        // Get screen details
+        // Lấy thông tin chi tiết phòng chiếu
         const screenResponse = await ScreenApi.getScreenById(screenId);
         if (screenResponse.statusCode === 200 && screenResponse.content) {
           setScreenInfo(screenResponse.content.screen);
         }
-        
-        // Get current seat layout
+
+        // Lấy bố cục ghế hiện tại
         const layoutResponse = await ScreenApi.getScreenSeats(screenId);
         if (layoutResponse.statusCode === 200 && layoutResponse.content) {
           const currentLayout = layoutResponse.content.seatingLayout || [];
           setLayout(currentLayout);
-          
-          // Extract configuration from existing layout
+
+          // Trích xuất cấu hình từ bố cục hiện có
           if (currentLayout.length > 0) {
-            const rowLabels = currentLayout.map(row => row.row).join('');
+            const extractedRowLabels = currentLayout.map(row => row.row).join('');
             const seatsPerRow = currentLayout[0]?.seats.length || 10;
-            
-            // Detect premium and VIP rows
+
+            // Phát hiện hàng cao cấp và VIP
             const premiumRows = [];
             const vipRows = [];
-            
+
             currentLayout.forEach(row => {
               const rowType = row.seats[0]?.type;
               if (rowType === 'premium') {
@@ -53,45 +56,44 @@ const ScreenSeatEditor = ({ screenId }) => {
                 vipRows.push(row.row);
               }
             });
-            
+
             setConfig({
-              rows: rowLabels.split(''),
+              rows: extractedRowLabels.split(''),
               seatsPerRow,
-              rowLabels,
+              rowLabels: config.rowLabels,
               premiumRows,
               vipRows
             });
           }
         }
       } catch (error) {
-        console.error('Error fetching screen data:', error);
-        message.error('Failed to load screen information');
+        console.error('Lỗi khi tải dữ liệu phòng chiếu:', error);
+        message.error('Không thể tải thông tin phòng chiếu');
       } finally {
         setLoading(false);
       }
     };
-    
-    fetchScreenInfo();
-  }, [screenId]);
 
-  // Generate layout preview based on config
+    fetchScreenInfo();
+  }, [screenId, config.rowLabels]);
+
+  // Tạo bản xem trước bố cục dựa trên cấu hình
   const generateLayout = () => {
     const newLayout = [];
-    const rowLabels = config.rowLabels.slice(0, 26); // Limit to 26 letters
-    
+
     for (let i = 0; i < config.rows.length; i++) {
       const rowLabel = config.rows[i];
       const seats = [];
-      
-      // Determine seat type for this row
+
+      // Xác định loại ghế cho hàng này
       let seatType = 'standard';
       if (config.vipRows.includes(rowLabel)) {
         seatType = 'vip';
       } else if (config.premiumRows.includes(rowLabel)) {
         seatType = 'premium';
       }
-      
-      // Generate seats for this row
+
+      // Tạo ghế cho hàng này
       for (let j = 1; j <= config.seatsPerRow; j++) {
         seats.push({
           id: `preview-${rowLabel}-${j}`,
@@ -100,81 +102,81 @@ const ScreenSeatEditor = ({ screenId }) => {
           status: 'available'
         });
       }
-      
+
       newLayout.push({
         row: rowLabel,
         seats
       });
     }
-    
+
     setLayout(newLayout);
   };
 
-  // Save the layout to the server
+  // Lưu bố cục lên máy chủ
   const saveLayout = async () => {
     if (!screenId) {
-      message.error('No screen selected');
+      message.error('Chưa chọn phòng chiếu');
       return;
     }
-    
+
     try {
       setSaving(true);
-      
-      // Convert preview layout to the format expected by the API
-      const seatsData = layout.flatMap(row => 
+
+      // Chuyển đổi bố cục xem trước sang định dạng mà API mong đợi
+      const seatsData = layout.flatMap(row =>
         row.seats.map(seat => ({
           row: row.row,
           number: seat.number,
           type: seat.type
         }))
       );
-      
-      // Send to the server
+
+      // Gửi lên máy chủ
       const response = await ScreenApi.updateScreenSeats(screenId, seatsData);
-      
+
       if (response.statusCode === 200) {
-        message.success('Seat layout updated successfully');
+        message.success('Bố cục ghế đã được cập nhật thành công');
       } else {
-        message.error('Failed to update seat layout');
+        message.error('Không thể cập nhật bố cục ghế');
       }
     } catch (error) {
-      console.error('Error saving layout:', error);
-      message.error('An error occurred while saving the layout');
+      console.error('Lỗi khi lưu bố cục:', error);
+      message.error('Đã xảy ra lỗi khi lưu bố cục');
     } finally {
       setSaving(false);
     }
   };
 
-  // Handle change in the number of rows
+  // Xử lý thay đổi số lượng hàng
   const handleRowsChange = (value) => {
     const rowCount = parseInt(value, 10);
     if (isNaN(rowCount) || rowCount < 1) return;
-    
-    // Create array of row labels
+
+    // Tạo mảng các nhãn hàng
     const newRows = [];
     for (let i = 0; i < rowCount && i < 26; i++) {
       newRows.push(config.rowLabels[i]);
     }
-    
+
     setConfig(prev => ({ ...prev, rows: newRows }));
   };
 
-  // Handle change in row type (standard, premium, vip)
+  // Xử lý thay đổi loại hàng (thường, cao cấp, vip)
   const handleRowTypeChange = (rowLabel, type) => {
     setConfig(prev => {
       const newConfig = { ...prev };
-      
-      // Remove from all type arrays first
+
+      // Đầu tiên, loại bỏ khỏi tất cả các mảng loại
       newConfig.premiumRows = newConfig.premiumRows.filter(r => r !== rowLabel);
       newConfig.vipRows = newConfig.vipRows.filter(r => r !== rowLabel);
-      
-      // Add to the specified type array
+
+      // Thêm vào mảng loại được chỉ định
       if (type === 'premium') {
         newConfig.premiumRows.push(rowLabel);
       } else if (type === 'vip') {
         newConfig.vipRows.push(rowLabel);
       }
-      
+
       return newConfig;
     });
   };
@@ -189,23 +191,23 @@ const ScreenSeatEditor = ({ screenId }) => {
 
   return (
     <div className="bg-white rounded-lg p-6 shadow-lg">
-      <h2 className="text-2xl font-bold mb-4">Screen Seat Layout Editor</h2>
+      <h2 className="text-2xl font-bold mb-4">Chỉnh sửa bố cục ghế phòng chiếu</h2>
       {screenInfo && (
         <div className="mb-4 p-3 bg-gray-100 rounded">
           <h3 className="font-bold">{screenInfo.name}</h3>
-          <p>Screen Type: {screenInfo.screenType}</p>
-          <p>Capacity: {screenInfo.capacity} seats</p>
+          <p>Loại phòng chiếu: {screenInfo.screenType}</p>
+          <p>Sức chứa: {screenInfo.capacity} ghế</p>
         </div>
       )}
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Layout Configuration */}
+        {/* Cấu hình bố cục */}
         <div className="p-4 border rounded">
-          <h3 className="font-bold mb-3">Layout Configuration</h3>
-          
+          <h3 className="font-bold mb-3">Cấu hình bố cục</h3>
+
           <div className="mb-4">
-            <label className="block mb-1">Number of Rows:</label>
-            <Input 
+            <label className="block mb-1">Số lượng hàng:</label>
+            <Input
               type="number"
               value={config.rows.length}
               onChange={e => handleRowsChange(e.target.value)}
@@ -213,48 +215,48 @@ const ScreenSeatEditor = ({ screenId }) => {
               max={26}
             />
           </div>
-          
+
           <div className="mb-4">
-            <label className="block mb-1">Seats Per Row:</label>
-            <Input 
-              type="number" 
+            <label className="block mb-1">Số ghế mỗi hàng:</label>
+            <Input
+              type="number"
               value={config.seatsPerRow}
-              onChange={e => setConfig(prev => ({ 
-                ...prev, 
-                seatsPerRow: parseInt(e.target.value, 10) || 1 
+              onChange={e => setConfig(prev => ({
+                ...prev,
+                seatsPerRow: parseInt(e.target.value, 10) || 1
               }))}
               min={1}
               max={40}
             />
           </div>
-          
-          <Button 
+
+          <Button
             type="primary"
             onClick={generateLayout}
             className="mb-4"
           >
-            Generate Preview
+            Tạo bản xem trước
           </Button>
-          
+
           <div>
-            <h4 className="font-bold mb-2">Row Types:</h4>
+            <h4 className="font-bold mb-2">Loại hàng:</h4>
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {config.rows.map(rowLabel => (
                 <div key={rowLabel} className="flex items-center space-x-2">
                   <span className="font-bold w-6">{rowLabel}</span>
-                  <Select 
+                  <Select
                     value={
-                      config.vipRows.includes(rowLabel) 
-                        ? 'vip' 
-                        : config.premiumRows.includes(rowLabel) 
-                          ? 'premium' 
+                      config.vipRows.includes(rowLabel)
+                        ? 'vip'
+                        : config.premiumRows.includes(rowLabel)
+                          ? 'premium'
                           : 'standard'
                     }
                     onChange={(value) => handleRowTypeChange(rowLabel, value)}
                     style={{ width: '100%' }}
                   >
-                    <Option value="standard">Standard</Option>
-                    <Option value="premium">Premium</Option>
+                    <Option value="standard">Thường</Option>
+                    <Option value="premium">Cao cấp</Option>
                     <Option value="vip">VIP</Option>
                   </Select>
                 </div>
@@ -262,15 +264,15 @@ const ScreenSeatEditor = ({ screenId }) => {
             </div>
           </div>
         </div>
-        
-        {/* Layout Preview */}
+
+        {/* Xem trước bố cục */}
         <div className="p-4 border rounded">
-          <h3 className="font-bold mb-3">Layout Preview</h3>
-          
+          <h3 className="font-bold mb-3">Xem trước bố cục</h3>
+
           <div className="w-full py-2 bg-gray-800 text-white font-bold rounded-lg mb-4 text-center">
-            SCREEN
+            MÀN HÌNH
           </div>
-          
+
           <div className="max-h-80 overflow-y-auto">
             <div className="flex flex-col items-center">
               {layout.map(row => (
@@ -281,12 +283,14 @@ const ScreenSeatEditor = ({ screenId }) => {
                       let borderColor = 'border-green-500';
                       if (seat.type === 'premium') borderColor = 'border-blue-500';
                       if (seat.type === 'vip') borderColor = 'border-purple-500';
-                      
+
                       return (
                         <div
                           key={seat.id}
                           className={`w-6 h-6 rounded flex items-center justify-center text-xs font-medium bg-gray-200 border-2 ${borderColor}`}
-                          title={`${row.row}${seat.number} - ${seat.type.toUpperCase()}`}
+                          title={`${row.row}${seat.number} - ${seat.type === 'standard' ? 'THƯỜNG' :
+                              seat.type === 'premium' ? 'CAO CẤP' : 'VIP'
+                            }`}
                         >
                           {seat.number}
                         </div>
@@ -299,29 +303,29 @@ const ScreenSeatEditor = ({ screenId }) => {
           </div>
         </div>
       </div>
-      
+
       <div className="text-right">
-        <Button 
-          type="primary" 
+        <Button
+          type="primary"
           onClick={saveLayout}
           loading={saving}
           disabled={layout.length === 0}
         >
-          Save Layout
+          Lưu bố cục
         </Button>
       </div>
-      
-      {/* Seat type legend */}
+
+      {/* Chú thích loại ghế */}
       <div className="mt-6 p-3 bg-gray-100 rounded">
-        <h3 className="font-bold mb-2">Legend:</h3>
+        <h3 className="font-bold mb-2">Chú thích:</h3>
         <div className="flex flex-wrap gap-4">
           <div className="flex items-center">
             <div className="w-6 h-6 bg-gray-200 border-2 border-green-500 rounded mr-2"></div>
-            <span>Standard</span>
+            <span>Thường</span>
           </div>
           <div className="flex items-center">
             <div className="w-6 h-6 bg-gray-200 border-2 border-blue-500 rounded mr-2"></div>
-            <span>Premium</span>
+            <span>Cao cấp</span>
           </div>
           <div className="flex items-center">
             <div className="w-6 h-6 bg-gray-200 border-2 border-purple-500 rounded mr-2"></div>
@@ -331,6 +335,11 @@ const ScreenSeatEditor = ({ screenId }) => {
       </div>
     </div>
   );
+};
+
+// Định nghĩa PropTypes để xác thực props
+ScreenSeatEditor.propTypes = {
+  screenId: PropTypes.string
 };
 
 export default ScreenSeatEditor;

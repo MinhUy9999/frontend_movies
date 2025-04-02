@@ -1,235 +1,134 @@
 // src/components/TheaterLayout.jsx
-import React, { useState } from 'react';
-import { Card, Button, Select, Input, Modal } from 'antd';
-import { DownCircleOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import PropTypes from 'prop-types';
 
-const { Option } = Select;
+const TheaterLayout = ({ showtimeId, seats, editable, onSeatSelect }) => {
+  const [selectedSeats, setSelectedSeats] = useState([]);
 
-const TheaterLayout = ({ theaterData, onSeatClick, readOnly = false, editable = false }) => {
-  const [selectedSeatType, setSelectedSeatType] = useState('standard');
-  const [isSeatModalVisible, setIsSeatModalVisible] = useState(false);
-  const [selectedSeat, setSelectedSeat] = useState(null);
-  
-  // Default theater layout if none provided
-  const defaultLayout = {
-    name: 'Screen 1',
-    rows: 9,
-    seatsPerRow: 9,
-    rowLabels: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
-    seats: []
-  };
-  
-  const layout = theaterData || defaultLayout;
-  
-  // Generate seats if not provided
-  const generateSeats = () => {
-    if (layout.seats && layout.seats.length > 0) {
-      return layout.seats;
-    }
-    
-    const generatedSeats = [];
-    for (let rowIndex = 0; rowIndex < layout.rows; rowIndex++) {
-      const rowLabel = layout.rowLabels[rowIndex];
-      const row = {
-        row: rowLabel,
-        seats: []
-      };
-      
-      for (let seatNum = 1; seatNum <= layout.seatsPerRow; seatNum++) {
-        let seatType = 'standard';
-        // Premium seats in first two rows
-        if (rowIndex < 2) {
-          seatType = 'premium';
-        } 
-        // VIP seats in 3rd row
-        else if (rowIndex === 2) {
-          seatType = 'vip';
-        }
-        
-        row.seats.push({
-          id: `${rowLabel}${seatNum}`,
-          number: seatNum,
-          type: seatType,
-          status: 'available'
-        });
+  // Log dữ liệu props khi component render
+  console.log('TheaterLayout props:', { showtimeId, seats, editable });
+
+  const handleSeatClick = (seat) => {
+    if (!editable || seat.status !== 'available') return;
+
+    setSelectedSeats(prev => {
+      const isAlreadySelected = prev.some(s => s.id === seat.id);
+      let newSelection;
+
+      if (isAlreadySelected) {
+        newSelection = prev.filter(s => s.id !== seat.id);
+      } else {
+        newSelection = [...prev, seat];
       }
-      
-      generatedSeats.push(row);
-    }
-    
-    return generatedSeats;
+
+      console.log('Selected seats updated:', newSelection);
+      onSeatSelect?.(newSelection);
+      return newSelection;
+    });
   };
-  
-  const seats = generateSeats();
-  
-  const handleSeatClick = (row, seat) => {
-    if (readOnly) return;
-    
-    if (editable) {
-      // In editable mode, show modal to edit seat
-      setSelectedSeat({ row, seat });
-      setIsSeatModalVisible(true);
-    } else {
-      // In normal mode, just handle the click event
-      if (onSeatClick) {
-        onSeatClick(`${row.row}${seat.number}`, seat.status, seat.type);
-      }
+
+  const getSeatColor = (seat) => {
+    const isSelected = selectedSeats.some(s => s.id === seat.id);
+    if (isSelected) return 'bg-blue-500 text-white';
+    switch (seat.status) {
+      case 'available': return 'bg-green-200 hover:bg-green-300';
+      case 'booked': return 'bg-red-500 text-white cursor-not-allowed';
+      case 'reserved': return 'bg-yellow-500 text-white cursor-not-allowed';
+      default: return 'bg-gray-200';
     }
   };
-  
-  const handleSeatUpdate = (newType) => {
-    // This would update the seat type in editable mode
-    // Implementation depends on how you want to update the data
-    setIsSeatModalVisible(false);
-  };
-  
-  // Calculate seat color based on type and status
-  const getSeatColor = (seat, isSelectedSeat = false) => {
-    // Status colors override type colors
-    if (seat.status === 'booked') return 'bg-red-500 text-white cursor-not-allowed';
-    if (seat.status === 'reserved') return 'bg-yellow-500 text-white cursor-not-allowed';
-    if (isSelectedSeat) return 'bg-blue-500 text-white';
-    
-    // Default colors based on type when available
-    return 'bg-gray-200 hover:bg-gray-300';
-  };
-  
-  // Get border color based on seat type
-  const getSeatBorder = (seat, rowLabel) => {
-    // Sử dụng hàng thay vì seat.type cho nhất quán
-    if (['D', 'E', 'F'].includes(rowLabel)) {
-      return 'border-blue-500'; // premium
-    } else if (['G', 'H', 'I'].includes(rowLabel)) {
-      return 'border-purple-500'; // vip
-    } else {
-      return 'border-green-500'; // standard
+
+  const getSeatBorder = (seat) => {
+    switch (seat.type) {
+      case 'standard': return 'border-2 border-green-500';
+      case 'premium': return 'border-2 border-blue-500';
+      case 'vip': return 'border-2 border-purple-500';
+      default: return 'border-2 border-gray-300';
     }
   };
-  
-  return (
-    <Card title={`Theater Layout - ${layout.name}`} className="mb-6">
-      {/* Control panel for editable mode */}
-      {editable && (
-        <div className="mb-4 p-3 bg-gray-100 rounded">
-          <div className="flex flex-wrap gap-3 items-center">
-            <span className="font-medium">Selected Seat Type:</span>
-            <Select 
-              value={selectedSeatType} 
-              onChange={setSelectedSeatType}
-              style={{ width: 120 }}
+
+  const renderSeats = () => {
+    console.log('Rendering seats with data:', seats);
+
+    if (!seats || seats.length === 0) {
+      console.log('No seats to render');
+      return <div>Không có ghế nào để hiển thị</div>;
+    }
+
+    const seatsByRow = seats.reduce((acc, seat) => {
+      if (!acc[seat.row]) acc[seat.row] = [];
+      acc[seat.row].push(seat);
+      return acc;
+    }, {});
+
+    console.log('Seats grouped by row:', seatsByRow);
+
+    return Object.entries(seatsByRow).map(([row, rowSeats]) => (
+      <div key={row} className="flex items-center mb-2">
+        <div className="mr-4 font-bold">{row}</div>
+        <div className="flex space-x-2">
+          {rowSeats.sort((a, b) => a.number - b.number).map(seat => (
+            <button
+              key={seat.id}
+              className={`w-10 h-10 rounded flex items-center justify-center ${getSeatColor(seat)} ${getSeatBorder(seat)}`}
+              onClick={() => handleSeatClick(seat)}
+              disabled={!editable || seat.status !== 'available'}
+              title={`${seat.row}${seat.number} - ${seat.type.toUpperCase()}`}
             >
-              <Option value="standard">Standard</Option>
-              <Option value="premium">Premium</Option>
-              <Option value="vip">VIP</Option>
-            </Select>
-            <span className="text-gray-500 ml-4">Click on a seat to change its type</span>
+              {seat.number}
+            </button>
+          ))}
+        </div>
+      </div>
+    ));
+  };
+
+  return (
+    <div className="p-4">
+      <h2 className="text-xl font-bold mb-4">Bố trí ghế (Showtime ID: {showtimeId})</h2>
+      <div className="w-full bg-gray-800 text-white text-center py-2 mb-4">MÀN HÌNH</div>
+      {renderSeats()}
+      <div className="mt-4 flex space-x-4">
+        <div className="flex items-center">
+          <div className="w-5 h-5 bg-green-200 border-2 border-green-500 mr-2"></div>
+          <span>Thường</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-5 h-5 bg-blue-200 border-2 border-blue-500 mr-2"></div>
+          <span>Cao cấp</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-5 h-5 bg-purple-200 border-2 border-purple-500 mr-2"></div>
+          <span>VIP</span>
+        </div>
+      </div>
+      {selectedSeats.length > 0 && (
+        <div className="mt-4">
+          <h3 className="font-bold mb-2">Ghế đã chọn:</h3>
+          <div className="flex space-x-2">
+            {selectedSeats.map(seat => (
+              <span key={seat.id} className="bg-blue-100 px-2 py-1 rounded">
+                {seat.row}{seat.number} ({seat.type})
+              </span>
+            ))}
           </div>
         </div>
       )}
-      
-      {/* Theater legend */}
-      <div className="flex flex-wrap gap-4 justify-center mb-6">
-        <div className="flex items-center">
-          <div className="w-6 h-6 bg-gray-200 border-2 border-green-500 rounded mr-2"></div>
-          <span>Standard</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-6 h-6 bg-gray-200 border-2 border-blue-500 rounded mr-2"></div>
-          <span>Premium</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-6 h-6 bg-gray-200 border-2 border-purple-500 rounded mr-2"></div>
-          <span>VIP</span>
-        </div>
-        {!editable && (
-          <>
-            <div className="flex items-center">
-              <div className="w-6 h-6 bg-blue-500 rounded mr-2"></div>
-              <span>Selected</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-6 h-6 bg-red-500 rounded mr-2"></div>
-              <span>Booked</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-6 h-6 bg-yellow-500 rounded mr-2"></div>
-              <span>Reserved</span>
-            </div>
-          </>
-        )}
-      </div>
-      
-      {/* Screen */}
-      <div className="relative">
-        <div className="w-full py-3 bg-gray-800 text-white font-bold rounded-t-lg text-center mb-10">
-          SCREEN
-        </div>
-        
-        {/* Seats */}
-        <div className="flex flex-col items-center space-y-3">
-          {seats.map(row => (
-            <div key={row.row} className="flex items-center">
-              <div className="w-8 text-center font-bold">{row.row}</div>
-              <div className="flex gap-2">
-                {row.seats.map(seat => {
-                  const isSelected = false; // This would need logic to determine if selected
-                  
-                  return (
-                    <button
-                      key={`${row.row}${seat.number}`}
-                      className={`w-10 h-10 rounded flex items-center justify-center text-sm font-medium ${getSeatColor(seat, isSelected)} border-2 ${getSeatBorder(seat, row.row)} transition-colors duration-200`}
-                      onClick={() => handleSeatClick(row, seat)}
-                      disabled={readOnly || (!editable && seat.status !== 'available' && !isSelected)}
-                    >
-                      {seat.number}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="w-8"></div> {/* Spacer for symmetry */}
-            </div>
-          ))}
-        </div>
-        
-        {/* Theater entrance */}
-        <div className="mt-10 text-center">
-          <div className="inline-block bg-gray-300 px-10 py-2 rounded">
-            <DownCircleOutlined className="mr-2" />
-            ENTRANCE
-          </div>
-        </div>
-      </div>
-      
-      {/* Edit Seat Modal */}
-      <Modal
-        title="Edit Seat"
-        visible={isSeatModalVisible}
-        onCancel={() => setIsSeatModalVisible(false)}
-        footer={[
-          <Button key="cancel" onClick={() => setIsSeatModalVisible(false)}>
-            Cancel
-          </Button>,
-          <Button key="standard" type="primary" onClick={() => handleSeatUpdate('standard')}>
-            Set as Standard
-          </Button>,
-          <Button key="premium" type="primary" style={{ background: '#1890ff' }} onClick={() => handleSeatUpdate('premium')}>
-            Set as Premium
-          </Button>,
-          <Button key="vip" type="primary" style={{ background: '#722ed1' }} onClick={() => handleSeatUpdate('vip')}>
-            Set as VIP
-          </Button>
-        ]}
-      >
-        {selectedSeat && (
-          <div>
-            <p><strong>Row:</strong> {selectedSeat.row.row}</p>
-            <p><strong>Seat Number:</strong> {selectedSeat.seat.number}</p>
-            <p><strong>Current Type:</strong> {selectedSeat.seat.type.toUpperCase()}</p>
-          </div>
-        )}
-      </Modal>
-    </Card>
+    </div>
   );
+};
+
+TheaterLayout.propTypes = {
+  showtimeId: PropTypes.string,
+  seats: PropTypes.array,
+  editable: PropTypes.bool,
+  onSeatSelect: PropTypes.func
+};
+
+TheaterLayout.defaultProps = {
+  seats: [],
+  editable: false,
+  onSeatSelect: () => { }
 };
 
 export default TheaterLayout;
