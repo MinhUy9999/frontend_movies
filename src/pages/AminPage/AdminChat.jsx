@@ -10,7 +10,10 @@ const AdminChat = () => {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef(null);
-  const { user } = useSelector((state) => state.user);
+  
+  const user = useSelector((state) => state.user) || {};
+  const userId = user.id || localStorage.getItem('userId');
+  
   const { addEventListener } = useWebSocket();
 
   useEffect(() => {
@@ -37,6 +40,7 @@ const AdminChat = () => {
     fetchConversations();
   }, []);
 
+  // Fetch messages when active user changes
   useEffect(() => {
     if (activeUser) {
       const fetchMessages = async () => {
@@ -54,24 +58,29 @@ const AdminChat = () => {
     }
   }, [activeUser]);
 
+  // Listen for new messages
   useEffect(() => {
     const unsubscribe = addEventListener('new_message', (data) => {
-      if (data.message && activeUser && 
-        (data.message.sender._id === activeUser._id || 
-         data.message.sender._id === user.id)) {
+      // Add message to current conversation if it belongs there
+      if (data.message && 
+          activeUser && 
+          userId && // Kiểm tra userId có tồn tại không
+          (data.message.sender._id === activeUser._id || 
+           data.message.sender._id === userId)) {
         setMessages(prev => [...prev, data.message]);
       }
       
+      // Update conversations list to show new messages from other users
       setConversations(prev => {
         return prev.map(conv => {
           if (conv.type === 'user' && 
-              conv.user._id === data.message.sender._id) {
+              conv.user._id === data.message?.sender?._id) {
             return {
               ...conv,
               lastMessage: data.message,
-              unreadCount: activeUser && activeUser._id === data.message.sender._id 
+              unreadCount: activeUser && activeUser._id === data.message?.sender?._id 
                 ? 0 
-                : conv.unreadCount + 1
+                : (conv.unreadCount || 0) + 1
             };
           }
           return conv;
@@ -80,8 +89,9 @@ const AdminChat = () => {
     });
     
     return () => unsubscribe();
-  }, [addEventListener, activeUser, user.id]);
+  }, [addEventListener, activeUser, userId]);
 
+  // Auto scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -114,12 +124,15 @@ const AdminChat = () => {
     });
   };
 
+  // Mark messages as read
   useEffect(() => {
     if (activeUser && messages.length > 0) {
+      // Find unread messages from the active user
       const unreadMessages = messages.filter(
-        msg => msg.sender._id === activeUser._id && !msg.isRead
+        msg => msg.sender?._id === activeUser._id && !msg.isRead
       );
       
+      // Mark each message as read
       unreadMessages.forEach(async (msg) => {
         try {
           await messageApi.markAsRead(msg._id);
@@ -151,40 +164,48 @@ const AdminChat = () => {
           </div>
         ) : (
           <div>
-            {conversations.map((conv) => (
-              <div 
-                key={conv.type === 'user' ? conv.user._id : conv.admin._id} 
-                className={`p-4 border-b cursor-pointer hover:bg-gray-100 ${
-                  activeUser && activeUser._id === (conv.type === 'user' ? conv.user._id : conv.admin._id) 
-                    ? 'bg-blue-50' 
-                    : ''
-                }`}
-                onClick={() => handleUserSelect(conv.type === 'user' ? conv.user : conv.admin)}
-              >
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
-                      {conv.type === 'user' && conv.user.avatar ? (
-                        <img src={conv.user.avatar} alt="Avatar" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-xl">{conv.type === 'user' ? conv.user.username[0] : conv.admin.username[0]}</span>
-                      )}
+            {conversations.map((conv) => {
+              // Xử lý an toàn cho conv.type và các thuộc tính liên quan
+              const convType = conv.type || 'unknown';
+              const convUser = convType === 'user' ? conv.user : null;
+              const convAdmin = convType === 'admin' ? conv.admin : null;
+              const displayId = convType === 'user' ? convUser?._id : convAdmin?._id;
+              
+              return (
+                <div 
+                  key={displayId || `conv-${Math.random()}`} 
+                  className={`p-4 border-b cursor-pointer hover:bg-gray-100 ${
+                    activeUser && activeUser._id === displayId
+                      ? 'bg-blue-50' 
+                      : ''
+                  }`}
+                  onClick={() => convType === 'user' && convUser ? handleUserSelect(convUser) : null}
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center">
+                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center overflow-hidden">
+                        {convType === 'user' && convUser?.avatar ? (
+                          <img src={convUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xl">{convType === 'user' && convUser ? convUser.username[0] : (convAdmin ? convAdmin.username[0] : 'U')}</span>
+                        )}
+                      </div>
+                      <div className="ml-3">
+                        <p className="font-semibold">{convType === 'user' && convUser ? convUser.username : (convAdmin ? convAdmin.username : 'Unknown')}</p>
+                        <p className="text-sm text-gray-500 truncate w-40">
+                          {conv.lastMessage ? conv.lastMessage.content : 'Bắt đầu cuộc trò chuyện'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="ml-3">
-                      <p className="font-semibold">{conv.type === 'user' ? conv.user.username : conv.admin.username}</p>
-                      <p className="text-sm text-gray-500 truncate w-40">
-                        {conv.lastMessage ? conv.lastMessage.content : 'Bắt đầu cuộc trò chuyện'}
-                      </p>
-                    </div>
+                    {(conv.unreadCount || 0) > 0 && (
+                      <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                        {conv.unreadCount}
+                      </div>
+                    )}
                   </div>
-                  {conv.unreadCount > 0 && (
-                    <div className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">
-                      {conv.unreadCount}
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -227,9 +248,13 @@ const AdminChat = () => {
               {messages.map((msg) => (
                 <div 
                   key={msg._id} 
-                  className={`flex ${msg.sender._id === user.id ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${
+                    msg.sender?._id && userId && msg.sender._id === userId 
+                      ? 'justify-end' 
+                      : 'justify-start'
+                  }`}
                 >
-                  {msg.sender._id !== user.id && (
+                  {msg.sender?._id && (!userId || msg.sender._id !== userId) && (
                     <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center mr-2 overflow-hidden">
                       {activeUser.avatar ? (
                         <img src={activeUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
@@ -240,15 +265,19 @@ const AdminChat = () => {
                   )}
                   <div 
                     className={`max-w-xs p-3 rounded-lg ${
-                      msg.sender._id === user.id
+                      msg.sender?._id && userId && msg.sender._id === userId
                         ? 'bg-blue-600 text-white rounded-br-none'
                         : 'bg-gray-200 text-black rounded-bl-none'
                     }`}
                   >
                     {msg.content}
-                    <div className={`text-xs mt-1 ${msg.sender._id === user.id ? 'text-blue-200' : 'text-gray-500'}`}>
+                    <div className={`text-xs mt-1 ${
+                      msg.sender?._id && userId && msg.sender._id === userId 
+                        ? 'text-blue-200' 
+                        : 'text-gray-500'
+                    }`}>
                       {new Date(msg.createdAt).toLocaleTimeString()}
-                      {msg.isRead && msg.sender._id === user.id && (
+                      {msg.isRead && msg.sender?._id && userId && msg.sender._id === userId && (
                         <span className="ml-1">✓</span>
                       )}
                     </div>
