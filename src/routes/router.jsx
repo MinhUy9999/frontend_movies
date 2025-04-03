@@ -85,14 +85,8 @@ const router = createBrowserRouter([
                 element: <ShowTimeManagement />,
             },
             {
-                path: "/admin",
-                element: <AdminPage />,
-                children: [
-                    {
-                        path: "chat",
-                        element: <AdminChat />,
-                    },
-                ],
+                path: "chat",
+                element: <AdminChat />,
             },
         ],
     },

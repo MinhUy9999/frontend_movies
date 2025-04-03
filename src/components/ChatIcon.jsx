@@ -1,3 +1,4 @@
+// src/components/ChatIcon.jsx
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { MessageCircle } from 'lucide-react';
@@ -7,7 +8,12 @@ import ChatWindow from './ChatWindow';
 const ChatIcon = () => {
   const [showChat, setShowChat] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const { isAuthenticated } = useSelector(state => state.user);
+  const { isAuthenticated, role } = useSelector(state => state.user);
+
+  // Nếu user là admin, không hiển thị icon chat
+  if (role === 'admin') {
+    return null;
+  }
 
   const handleChatIconClick = () => {
     if (isAuthenticated) {
