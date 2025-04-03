@@ -1,9 +1,10 @@
-// src/components/ChatWindow.jsx
+
 import { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { X, Send } from 'lucide-react';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { api } from '../apis/index';
+import messageApi from '../apis/messageApi';
 
 const ChatWindow = ({ onClose }) => {
   const [messages, setMessages] = useState([]);
@@ -13,19 +14,18 @@ const ChatWindow = ({ onClose }) => {
   const [selectedAdmin, setSelectedAdmin] = useState(null);
   const messagesEndRef = useRef(null);
   const { isConnected, addEventListener } = useWebSocket();
-  const { user } = useSelector((state) => state.user);
+  const user = useSelector((state) => state.user) || {};
+  const userId = user.id || localStorage.getItem('userId'); 
 
-  // Fetch available admins
   useEffect(() => {
     const fetchAdmins = async () => {
       try {
-        const response = await api.get('/messages/available-admins');
-        if (response.data && response.data.content && response.data.content.admins) {
-          setAdmins(response.data.content.admins);
+        const response = await messageApi.getAvailableAdmins();
+        if (response.statusCode === 200 && response.content && response.content.admins) {
+          setAdmins(response.content.admins);
           
-          // Select first admin by default if available
-          if (response.data.content.admins.length > 0) {
-            setSelectedAdmin(response.data.content.admins[0]);
+          if (response.content.admins.length > 0) {
+            setSelectedAdmin(response.content.admins[0]);
           }
         }
         setLoading(false);
@@ -43,9 +43,9 @@ const ChatWindow = ({ onClose }) => {
     if (selectedAdmin) {
       const fetchConversation = async () => {
         try {
-          const response = await api.get(`/messages/conversation/${selectedAdmin._id}`);
-          if (response.data && response.data.content && response.data.content.messages) {
-            setMessages(response.data.content.messages);
+          const response = await messageApi.getConversation(selectedAdmin._id);
+          if (response.statusCode === 200 && response.content && response.content.messages) {
+            setMessages(response.content.messages);
           }
         } catch (error) {
           console.error('Error fetching conversation:', error);
@@ -56,19 +56,21 @@ const ChatWindow = ({ onClose }) => {
     }
   }, [selectedAdmin]);
 
+  // Setup WebSocket listener for new messages
   useEffect(() => {
     const unsubscribe = addEventListener('new_message', (data) => {
-        if (data.message && 
-            ((data.message.sender._id === selectedAdmin?._id) || 
-             (user && data.message.sender._id === user.id))) {
-          setMessages(prev => [...prev, data.message]);
-        }
+      // Sửa điều kiện kiểm tra để tránh lỗi undefined
+      if (data.message && 
+          ((data.message.sender._id === selectedAdmin?._id) || 
+           (userId && data.message.sender._id === userId))) {
+        setMessages(prev => [...prev, data.message]);
+      }
     });
     
     return () => {
       unsubscribe();
     };
-  }, [addEventListener, selectedAdmin, user.id]);
+  }, [addEventListener, selectedAdmin, userId]);
 
   // Auto scroll to bottom when messages change
   useEffect(() => {
@@ -79,11 +81,7 @@ const ChatWindow = ({ onClose }) => {
     if (!newMessage.trim() || !selectedAdmin) return;
     
     try {
-      await api.post('/messages', {
-        receiverId: selectedAdmin._id,
-        content: newMessage
-      });
-      
+      await messageApi.sendMessage(selectedAdmin._id, newMessage);
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -144,11 +142,17 @@ const ChatWindow = ({ onClose }) => {
           messages.map((msg) => (
             <div 
               key={msg._id} 
-              className={`flex ${msg.sender === 'user' || msg.sender._id === user.id ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${
+                msg.sender === 'user' || 
+                (msg.sender._id && userId && msg.sender._id === userId) 
+                  ? 'justify-end' 
+                  : 'justify-start'
+              }`}
             >
               <div 
                 className={`max-w-[70%] p-3 rounded-lg ${
-                  msg.sender === 'user' || msg.sender._id === user.id
+                  msg.sender === 'user' || 
+                  (msg.sender._id && userId && msg.sender._id === userId)
                     ? 'bg-blue-600 text-white rounded-br-none'
                     : 'bg-gray-200 text-black rounded-bl-none'
                 }`}
