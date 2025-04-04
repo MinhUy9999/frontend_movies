@@ -47,12 +47,13 @@ const AdminChat = () => {
         try {
           const response = await messageApi.getConversation(activeUser._id);
           console.log('Fetch conversation response:', response); 
-  
+          console.log('Active user:', activeUser);
+          
           if (response.statusCode === 200 && response.content && response.content.messages) {
+            console.log('Setting messages:', response.content.messages.length, 'messages');
             setMessages(response.content.messages);
-            console.log('Set messages:', response.content.messages); // Debug
           } else {
-            console.error('Invalid response format:', response);
+            console.error('Invalid response format or no messages:', response);
             setMessages([]);
           }
         } catch (error) {
@@ -66,24 +67,14 @@ const AdminChat = () => {
 
   useEffect(() => {
     if (!activeUser || !userId) return;
-  
-    console.log('Setting up WebSocket listener for userId:', userId, 'and activeUser:', activeUser._id);
     
     const unsubscribe = addEventListener('new_message', (data) => {
-      console.log('WebSocket message received:', data);
-      
       if (data.message) {
-        const senderId = data.message.sender?._id;
-        const receiverId = data.message.receiver?._id;
-        
-        console.log('Message details - senderId:', senderId, 'receiverId:', receiverId);
-        console.log('Comparing with - userId:', userId, 'activeUser:', activeUser._id);
-        
-        const isRelevantMessage = (senderId === userId && receiverId === activeUser._id) || 
-                                 (senderId === activeUser._id && receiverId === userId);
+        const isRelevantMessage = 
+          (data.message.userId === activeUser._id && data.message.adminId === userId) ||
+          (data.message.adminId === userId && data.message.userId === activeUser._id);
         
         if (isRelevantMessage) {
-          console.log('Adding message to conversation');
           setMessages(prev => [...prev, data.message]);
         }
       }
@@ -100,27 +91,49 @@ const AdminChat = () => {
     if (!newMessage.trim() || !activeUser) return;
     
     try {
-      await messageApi.sendMessage(activeUser._id, newMessage);
+      const response = await messageApi.sendMessage(activeUser._id, newMessage);
+      console.log('Send message response:', response);
+      
+      if (response.statusCode === 201 && response.content && response.content.message) {
+        console.log('Adding new message to state:', response.content.message);
+        setMessages(prev => [...prev, response.content.message]);
+      } else {
+        console.error('Error response from sendMessage:', response);
+      }
+      
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
     }
   };
 
-  const handleUserSelect = (user) => {
+  const handleUserSelect = async (user) => {
     setActiveUser(user);
     
-    setConversations(prev => {
-      return prev.map(conv => {
-        if (conv.type === 'user' && conv.user._id === user._id) {
-          return {
-            ...conv,
-            unreadCount: 0
-          };
-        }
-        return conv;
+    try {
+      const response = await messageApi.getConversation(user._id);
+      
+      if (response.statusCode === 200 && response.content && response.content.messages) {
+        setMessages(response.content.messages);
+      } else {
+        setMessages([]);
+      }
+      
+      setConversations(prev => {
+        return prev.map(conv => {
+          if (conv.type === 'user' && conv.user._id === user._id) {
+            return {
+              ...conv,
+              unreadCount: 0
+            };
+          }
+          return conv;
+        });
       });
-    });
+    } catch (error) {
+      console.error('Error fetching conversation:', error);
+      setMessages([]);
+    }
   };
 
   useEffect(() => {
@@ -138,23 +151,6 @@ const AdminChat = () => {
       });
     }
   }, [activeUser, messages]);
-
-  useEffect(() => {
-    if (!activeUser) return;
-    
-    const intervalId = setInterval(async () => {
-      try {
-        const response = await messageApi.getConversation(activeUser._id);
-        if (response.statusCode === 200 && response.content && response.content.messages) {
-          setMessages(response.content.messages);
-        }
-      } catch (error) {
-        console.error('Error polling messages:', error);
-      }
-    }, 1000);
-    
-    return () => clearInterval(intervalId);
-  }, [activeUser]);
 
 
   if (loading) {
@@ -179,7 +175,6 @@ const AdminChat = () => {
         ) : (
           <div>
             {conversations.map((conv) => {
-              // Xử lý an toàn cho conv.type và các thuộc tính liên quan
               const convType = conv.type || 'unknown';
               const convUser = convType === 'user' ? conv.user : null;
               const convAdmin = convType === 'admin' ? conv.admin : null;
@@ -263,13 +258,12 @@ const AdminChat = () => {
               {messages.map((msg) => {
                 console.log('Rendering message:', msg); // Debug
                 
-                const isSentByMe = msg.sender === 'admin' || 
-                                  (msg.sender?._id && userId && msg.sender._id === userId) ||
-                                  (msg.adminId && userId && msg.adminId.toString() === userId);
+                // Xác định người gửi là admin hay không
+                const isSentByMe = msg.sender === 'admin';
                 
                 return (
                   <div 
-                    key={msg._id} 
+                    key={msg._id || msg.id} 
                     className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'}`}
                   >
                     {!isSentByMe && (
