@@ -58,6 +58,7 @@ const ChatWindow = ({ onClose }) => {
     if (!selectedAdmin || !userId) return;
   
     const unsubscribe = addEventListener('new_message', (data) => {
+      console.log('WebSocket new_message received:', data);
       if (data.message) {
         const isRelevantToCurrentChat = 
           (data.message.userId === userId && data.message.adminId === selectedAdmin._id) ||
@@ -81,9 +82,12 @@ const ChatWindow = ({ onClose }) => {
     
     try {
       const response = await messageApi.sendMessage(selectedAdmin._id, newMessage);
+      console.log('Send message response:', response);
       
       if (response.statusCode === 201 && response.content && response.content.message) {
-        setMessages(prev => [...prev, response.content.message]);
+        const newMsg = response.content.message;
+        console.log('Adding new message to state:', newMsg);
+        setMessages(prev => [...prev, newMsg]);
       }
       
       setNewMessage('');
@@ -91,6 +95,8 @@ const ChatWindow = ({ onClose }) => {
       console.error('Error sending message:', error);
     }
   };
+
+
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -143,15 +149,12 @@ const ChatWindow = ({ onClose }) => {
           </div>
         ) : (
           messages.map((msg) => {
-            console.log('Rendering message in ChatWindow:', msg); // Để debug
             
-            // Kiểm tra xem msg có đúng định dạng không
             if (!msg || typeof msg !== 'object') {
               console.error('Invalid message format:', msg);
               return null;
             }
             
-            // Người dùng gửi tin nhắn với sender='user'
             const isSentByMe = msg.sender === 'user';
             
             return (

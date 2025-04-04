@@ -111,16 +111,12 @@ class WebSocketService {
     }
   }
 
-  // Setup mock WebSocket for development when server is not available
   setupMockWebSocket() {
     console.log("Setting up mock WebSocket for development");
 
-    // Create a mock socket object
     this.socket = {
       readyState: WebSocket.OPEN,
       send: (data) => {
-        console.log("Mock WebSocket send:", data);
-        // Simulate response for ping messages
         try {
           const parsed = JSON.parse(data);
           if (parsed.type === "ping") {
@@ -143,11 +139,9 @@ class WebSocketService {
       },
     };
 
-    // Simulate successful connection
     setTimeout(() => {
       this.handleOpen();
 
-      // Simulate a connection message
       this.handleMessage({
         data: JSON.stringify({
           type: "connected",
@@ -155,7 +149,6 @@ class WebSocketService {
         }),
       });
 
-      // For development testing: simulate a booking_expiring event after 10 seconds
       setTimeout(() => {
         this.handleMessage({
           data: JSON.stringify({
@@ -165,7 +158,6 @@ class WebSocketService {
           }),
         });
 
-        // Then simulate a seats_updated event
         setTimeout(() => {
           this.handleMessage({
             data: JSON.stringify({
@@ -180,12 +172,9 @@ class WebSocketService {
     return true;
   }
 
-  // Handle WebSocket open event
   handleOpen() {
-    console.log("WebSocket connection established");
     this.reconnectAttempts = 0;
 
-    // Send a ping to the server every 30 seconds to keep the connection alive
     this.pingInterval = setInterval(() => {
       this.sendMessage({
         type: "ping",
@@ -194,19 +183,16 @@ class WebSocketService {
     }, 30000);
   }
 
-  // Handle WebSocket messages
   handleMessage(event) {
     try {
       const data = JSON.parse(event.data);
       console.log("WebSocket message received:", data);
 
-      // Notify all listeners for this message type
       if (data.type && this.listeners.has(data.type)) {
         const callbacks = this.listeners.get(data.type);
         callbacks.forEach((callback) => callback(data));
       }
 
-      // Notify global listeners
       if (this.listeners.has("*")) {
         const callbacks = this.listeners.get("*");
         callbacks.forEach((callback) => callback(data));
@@ -216,12 +202,10 @@ class WebSocketService {
     }
   }
 
-  // Handle WebSocket close event
   handleClose(event) {
     console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
     clearInterval(this.pingInterval);
 
-    // Attempt to reconnect if not a normal closure
     if (
       event.code !== 1000 &&
       this.reconnectAttempts < this.maxReconnectAttempts
@@ -237,12 +221,10 @@ class WebSocketService {
     }
   }
 
-  // Handle WebSocket error event
   handleError(error) {
     console.error("WebSocket error:", error);
   }
 
-  // Send a message to the server
   sendMessage(data) {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(data));
