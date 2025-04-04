@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { X, Send } from 'lucide-react';
 import { useWebSocket } from '../contexts/WebSocketContext';
-import { api } from '../apis/index';
 import messageApi from '../apis/messageApi';
 
 const ChatWindow = ({ onClose }) => {
@@ -15,7 +14,7 @@ const ChatWindow = ({ onClose }) => {
   const messagesEndRef = useRef(null);
   const { isConnected, addEventListener } = useWebSocket();
   const user = useSelector((state) => state.user) || {};
-  const userId = user.id || localStorage.getItem('userId'); 
+  const userId = user.id || localStorage.getItem('userId');
 
   useEffect(() => {
     const fetchAdmins = async () => {
@@ -23,7 +22,7 @@ const ChatWindow = ({ onClose }) => {
         const response = await messageApi.getAvailableAdmins();
         if (response.statusCode === 200 && response.content && response.content.admins) {
           setAdmins(response.content.admins);
-          
+
           if (response.content.admins.length > 0) {
             setSelectedAdmin(response.content.admins[0]);
           }
@@ -34,7 +33,7 @@ const ChatWindow = ({ onClose }) => {
         setLoading(false);
       }
     };
-    
+
     fetchAdmins();
   }, []);
 
@@ -51,7 +50,7 @@ const ChatWindow = ({ onClose }) => {
           console.error('Error fetching conversation:', error);
         }
       };
-      
+
       fetchConversation();
     }
   }, [selectedAdmin]);
@@ -60,13 +59,13 @@ const ChatWindow = ({ onClose }) => {
   useEffect(() => {
     const unsubscribe = addEventListener('new_message', (data) => {
       // Sửa điều kiện kiểm tra để tránh lỗi undefined
-      if (data.message && 
-          ((data.message.sender._id === selectedAdmin?._id) || 
-           (userId && data.message.sender._id === userId))) {
+      if (data.message &&
+        ((data.message.sender._id === selectedAdmin?._id) ||
+          (userId && data.message.sender._id === userId))) {
         setMessages(prev => [...prev, data.message]);
       }
     });
-    
+
     return () => {
       unsubscribe();
     };
@@ -79,7 +78,7 @@ const ChatWindow = ({ onClose }) => {
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedAdmin) return;
-    
+
     try {
       await messageApi.sendMessage(selectedAdmin._id, newMessage);
       setNewMessage('');
@@ -107,11 +106,11 @@ const ChatWindow = ({ onClose }) => {
           <X size={20} />
         </button>
       </div>
-      
+
       {/* Admin Selection */}
       {admins.length > 0 && (
         <div className="p-2 border-b">
-          <select 
+          <select
             className="w-full p-2 border rounded"
             value={selectedAdmin?._id || ''}
             onChange={(e) => {
@@ -127,7 +126,7 @@ const ChatWindow = ({ onClose }) => {
           </select>
         </div>
       )}
-      
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50">
         {loading ? (
@@ -140,22 +139,20 @@ const ChatWindow = ({ onClose }) => {
           </div>
         ) : (
           messages.map((msg) => (
-            <div 
-              key={msg._id} 
-              className={`flex ${
-                msg.sender === 'user' || 
-                (msg.sender._id && userId && msg.sender._id === userId) 
-                  ? 'justify-end' 
-                  : 'justify-start'
-              }`}
-            >
-              <div 
-                className={`max-w-[70%] p-3 rounded-lg ${
-                  msg.sender === 'user' || 
+            <div
+              key={msg._id}
+              className={`flex ${msg.sender === 'user' ||
                   (msg.sender._id && userId && msg.sender._id === userId)
+                  ? 'justify-end'
+                  : 'justify-start'
+                }`}
+            >
+              <div
+                className={`max-w-[70%] p-3 rounded-lg ${msg.sender === 'user' ||
+                    (msg.sender._id && userId && msg.sender._id === userId)
                     ? 'bg-blue-600 text-white rounded-br-none'
                     : 'bg-gray-200 text-black rounded-bl-none'
-                }`}
+                  }`}
               >
                 {msg.content}
               </div>
@@ -164,7 +161,7 @@ const ChatWindow = ({ onClose }) => {
         )}
         <div ref={messagesEndRef} />
       </div>
-      
+
       {/* Message Input */}
       <div className="p-3 border-t flex">
         <input
