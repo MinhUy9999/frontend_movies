@@ -7,13 +7,23 @@ class WebSocketService {
     this.listeners = new Map();
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
-    this.reconnectDelay = 3000; // 3 seconds
+    this.reconnectDelay = 3000;
   }
 
-  // Initialize WebSocket connection
+  notifyNewMessage(message) {
+    if (this.listeners.has("new_message")) {
+      const callbacks = this.listeners.get("new_message");
+      callbacks.forEach((callback) =>
+        callback({
+          type: "new_message",
+          message,
+        })
+      );
+    }
+  }
+
   async connect() {
     try {
-      // Get WebSocket token from API
       let wsToken;
 
       try {
@@ -26,7 +36,6 @@ class WebSocketService {
           wsToken = response.content.wsToken;
         } else {
           console.warn("WebSocket token response invalid:", response);
-          // In development, use a fallback mock token if the API call fails
           if (import.meta.env.DEV) {
             console.log(
               "Using mock WebSocket functionality in development mode"
@@ -37,7 +46,6 @@ class WebSocketService {
         }
       } catch (error) {
         console.warn("Error getting WebSocket token:", error);
-        // In development, use a fallback mock token if the API call fails
         if (import.meta.env.DEV) {
           console.log("Using mock WebSocket functionality in development mode");
           return this.setupMockWebSocket();
@@ -45,7 +53,6 @@ class WebSocketService {
         return false;
       }
 
-      // Setup real WebSocket connection
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host =
         import.meta.env.VITE_WS_URL || `${window.location.hostname}:5000`;
@@ -54,22 +61,18 @@ class WebSocketService {
       try {
         this.socket = new WebSocket(wsUrl);
 
-        // Setup event handlers
         this.socket.onopen = this.handleOpen.bind(this);
         this.socket.onmessage = this.handleMessage.bind(this);
         this.socket.onclose = this.handleClose.bind(this);
         this.socket.onerror = this.handleError.bind(this);
 
-        // Create a promise that resolves when the connection is opened or rejects on error
         return new Promise((resolve, reject) => {
-          // Add one-time event handlers for connection success/failure
           this.socket.addEventListener("open", () => resolve(true), {
             once: true,
           });
           this.socket.addEventListener(
             "error",
             () => {
-              // If WebSocket fails in development, fall back to mock
               if (import.meta.env.DEV) {
                 console.log(
                   "Real WebSocket connection failed. Using mock in development mode"
@@ -82,7 +85,6 @@ class WebSocketService {
             { once: true }
           );
 
-          // Set a timeout to prevent hanging
           setTimeout(() => {
             if (this.socket.readyState !== WebSocket.OPEN) {
               if (import.meta.env.DEV) {
@@ -99,7 +101,6 @@ class WebSocketService {
       } catch (error) {
         console.error("Error creating WebSocket:", error);
 
-        // In development, fall back to mock functionality
         if (import.meta.env.DEV) {
           return this.setupMockWebSocket();
         }
@@ -235,7 +236,6 @@ class WebSocketService {
     }
   }
 
-  // Add an event listener
   addEventListener(type, callback) {
     if (!this.listeners.has(type)) {
       this.listeners.set(type, new Set());
@@ -245,14 +245,12 @@ class WebSocketService {
     return () => this.removeEventListener(type, callback);
   }
 
-  // Remove an event listener
   removeEventListener(type, callback) {
     if (this.listeners.has(type)) {
       this.listeners.get(type).delete(callback);
     }
   }
 
-  // Close the connection
   disconnect() {
     if (this.socket) {
       this.socket.close();
@@ -262,6 +260,5 @@ class WebSocketService {
   }
 }
 
-// Export a singleton instance
 export const websocketService = new WebSocketService();
 export default websocketService;
