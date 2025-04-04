@@ -15,7 +15,13 @@ const AdminChat = () => {
   const user = useSelector((state) => state.user) || {};
   const userId = user.id || localStorage.getItem('userId');
   
-  const { isConnected, addEventListener } = useWebSocket();
+  const { 
+    isConnected, 
+    addMessage, 
+    getConversationMessages, 
+    markConversationAsRead,
+    notifyNewMessage 
+  } = useWebSocket();
 
   useEffect(() => {
     const fetchConversations = async () => {
@@ -42,13 +48,18 @@ const AdminChat = () => {
   }, []);
 
   useEffect(() => {
-    if (activeUser) {
+    if (activeUser && userId) {
       const fetchMessages = async () => {
         try {
           const response = await messageApi.getConversation(activeUser._id);
           
           if (response.statusCode === 200 && response.content && response.content.messages) {
-            setMessages(response.content.messages);
+            response.content.messages.forEach(msg => addMessage(msg));
+            
+            const conversationMessages = getConversationMessages(activeUser._id, userId);
+            setMessages(conversationMessages);
+            
+            markConversationAsRead(activeUser._id, userId, 'admin');
           } else {
             console.error('No messages in response:', response);
             setMessages([]);
@@ -61,12 +72,12 @@ const AdminChat = () => {
       
       fetchMessages();
     }
-  }, [activeUser]);
+  }, [activeUser, userId, addMessage, getConversationMessages, markConversationAsRead]);
 
   useEffect(() => {
     if (!activeUser || !userId) return;
     
-    const unsubscribe = addEventListener('new_message', (data) => {
+    const handleNewMessage = (data) => {
       console.log('WebSocket new_message received in AdminChat:', data);
       if (data.message) {
         const isRelevantMessage = 
@@ -74,10 +85,16 @@ const AdminChat = () => {
           (data.message.adminId === userId && data.message.userId === activeUser._id);
         
         if (isRelevantMessage) {
-          setMessages(prev => [...prev, data.message]);
+          setMessages(prev => {
+            const exists = prev.some(msg => msg._id === data.message._id);
+            if (exists) return prev;
+            return [...prev, data.message];
+          });
         }
       }
-    });
+    };
+    
+    const unsubscribe = addEventListener('new_message', handleNewMessage);
     
     return () => unsubscribe();
   }, [addEventListener, activeUser, userId]);
@@ -90,13 +107,19 @@ const AdminChat = () => {
     if (!newMessage.trim() || !activeUser) return;
     
     try {
+      console.log('Sending message to user:', activeUser._id);
       const response = await messageApi.sendMessage(activeUser._id, newMessage);
       console.log('Send message response:', response);
       
       if (response.statusCode === 201 && response.content && response.content.message) {
         const newMsg = response.content.message;
-        console.log('Adding new message to state:', newMsg);
+        console.log('Adding new message to state and context:', newMsg);
+        
+        addMessage(newMsg);
+        
         setMessages(prev => [...prev, newMsg]);
+        
+        notifyNewMessage(newMsg);
       } else {
         console.error('Error response from sendMessage:', response);
       }
