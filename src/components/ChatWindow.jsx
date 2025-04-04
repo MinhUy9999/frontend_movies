@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { X, Send } from 'lucide-react';
 import { useWebSocket } from '../contexts/WebSocketContext';
-import { api } from '../apis/index';
 import messageApi from '../apis/messageApi';
 
 const ChatWindow = ({ onClose }) => {
@@ -38,7 +37,6 @@ const ChatWindow = ({ onClose }) => {
     fetchAdmins();
   }, []);
 
-  // Fetch conversation with selected admin
   useEffect(() => {
     if (selectedAdmin) {
       const fetchConversation = async () => {
@@ -56,23 +54,24 @@ const ChatWindow = ({ onClose }) => {
     }
   }, [selectedAdmin]);
 
-  // Setup WebSocket listener for new messages
   useEffect(() => {
+    if (!selectedAdmin || !userId) return;
+  
     const unsubscribe = addEventListener('new_message', (data) => {
-      // Sửa điều kiện kiểm tra để tránh lỗi undefined
-      if (data.message && 
-          ((data.message.sender._id === selectedAdmin?._id) || 
-           (userId && data.message.sender._id === userId))) {
-        setMessages(prev => [...prev, data.message]);
+      if (data.message) {
+        const isRelevantToCurrentChat = 
+          (data.message.userId === userId && data.message.adminId === selectedAdmin._id) ||
+          (data.message.adminId === selectedAdmin._id && data.message.userId === userId);
+        
+        if (isRelevantToCurrentChat) {
+          setMessages(prev => [...prev, data.message]);
+        }
       }
     });
     
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [addEventListener, selectedAdmin, userId]);
 
-  // Auto scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -81,13 +80,17 @@ const ChatWindow = ({ onClose }) => {
     if (!newMessage.trim() || !selectedAdmin) return;
     
     try {
-      await messageApi.sendMessage(selectedAdmin._id, newMessage);
+      const response = await messageApi.sendMessage(selectedAdmin._id, newMessage);
+      
+      if (response.statusCode === 201 && response.content && response.content.message) {
+        setMessages(prev => [...prev, response.content.message]);
+      }
+      
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
     }
   };
-
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -139,28 +142,38 @@ const ChatWindow = ({ onClose }) => {
             Bắt đầu trò chuyện với nhân viên tư vấn
           </div>
         ) : (
-          messages.map((msg) => (
-            <div 
-              key={msg._id} 
-              className={`flex ${
-                msg.sender === 'user' || 
-                (msg.sender._id && userId && msg.sender._id === userId) 
-                  ? 'justify-end' 
-                  : 'justify-start'
-              }`}
-            >
+          messages.map((msg) => {
+            console.log('Rendering message in ChatWindow:', msg); // Để debug
+            
+            // Kiểm tra xem msg có đúng định dạng không
+            if (!msg || typeof msg !== 'object') {
+              console.error('Invalid message format:', msg);
+              return null;
+            }
+            
+            // Người dùng gửi tin nhắn với sender='user'
+            const isSentByMe = msg.sender === 'user';
+            
+            return (
               <div 
-                className={`max-w-[70%] p-3 rounded-lg ${
-                  msg.sender === 'user' || 
-                  (msg.sender._id && userId && msg.sender._id === userId)
-                    ? 'bg-blue-600 text-white rounded-br-none'
-                    : 'bg-gray-200 text-black rounded-bl-none'
-                }`}
+                key={msg._id || msg.id} 
+                className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'}`}
               >
-                {msg.content}
+                <div 
+                  className={`max-w-[70%] p-3 rounded-lg ${
+                    isSentByMe
+                      ? 'bg-blue-600 text-white rounded-br-none'
+                      : 'bg-gray-200 text-black rounded-bl-none'
+                  }`}
+                >
+                  {msg.content}
+                  <div className={`text-xs mt-1 ${isSentByMe ? 'text-blue-200' : 'text-gray-500'}`}>
+                    {new Date(msg.createdAt).toLocaleTimeString()}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
