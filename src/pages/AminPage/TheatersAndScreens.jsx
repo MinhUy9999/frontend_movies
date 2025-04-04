@@ -1,5 +1,5 @@
 // src/pages/AminPage/TheatersAndScreens.jsx
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Tabs, Card, Select, Button, Form, Input, InputNumber, message, Spin } from 'antd';
 import { ScreenApi } from '../../apis/screenApi';
 import { TheaterAPI } from '../../apis/theaterApi';

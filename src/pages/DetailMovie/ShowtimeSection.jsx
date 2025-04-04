@@ -1,19 +1,23 @@
 // src/pages/DetailMovie/ShowtimeSection.jsx
-import { useState } from 'react'; // Import hook useState để quản lý trạng thái
-import PropTypes from 'prop-types'; // Import PropTypes để kiểm tra kiểu dữ liệu props
-import { Card, Tabs, DatePicker, Button, Modal } from 'antd'; // Import các component từ thư viện Ant Design
-import { CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons'; // Import các biểu tượng
-import TheaterLayout from '../../components/TheaterLayout'; // Import component bố cục rạp chiếu
+import { useState } from 'react';
+import PropTypes from 'prop-types';
+import { Card, Tabs, DatePicker, Button, Modal, message } from 'antd';
+import { CalendarOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import TheaterLayout from '../../components/TheaterLayout';
+import { apiSeats } from '../../apis/seatApi';
+import showtimeApi from '../../apis/showtimeApi';
+import bookingApi from '../../apis/bookingApi';
 
-const { TabPane } = Tabs; // Lấy component TabPane từ Tabs
+const { TabPane } = Tabs;
 
-// Component chính để hiển thị và chọn suất chiếu
 const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
-  // Khai báo các state cần thiết
-  const [selectedDate, setSelectedDate] = useState(new Date()); // Ngày đã chọn
-  const [isLayoutModalVisible, setIsLayoutModalVisible] = useState(false); // Trạng thái hiển thị modal
-  const [selectedShowtime, setSelectedShowtime] = useState(null); // Suất chiếu đã chọn
-  const [selectedSeats, setSelectedSeats] = useState([]); // Danh sách ghế đã chọn
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [isLayoutModalVisible, setIsLayoutModalVisible] = useState(false);
+  const [selectedShowtime, setSelectedShowtime] = useState(null);
+  const [selectedSeats, setSelectedSeats] = useState([]);
+  const [showtimeSeats, setShowtimeSeats] = useState([]);
+  const [seatsLoading, setSeatsLoading] = useState(false);
+  const [isBooking, setIsBooking] = useState(false);
 
   // Nhóm danh sách suất chiếu theo rạp
   const showtimesByTheater = showtimes.reduce((acc, theater) => {
@@ -40,38 +44,160 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
     }
   };
 
+  // Fetch seats for a specific showtime
+  const fetchShowtimeSeats = async (showtimeId) => {
+    try {
+      setSeatsLoading(true);
+      const response = await apiSeats.getSeatsByShowtime(showtimeId);
+
+      if (response.content) {
+        const transformedSeats = response.content.map(seat => ({
+          id: seat._id,
+          row: seat.row,
+          number: seat.seatNumber,
+          type: seat.seatType,
+          status: seat.status
+        }));
+        setShowtimeSeats(transformedSeats);
+      } else {
+        setShowtimeSeats([]);
+        message.warning('Không tìm thấy ghế cho suất chiếu này');
+      }
+    } catch (error) {
+      console.error('Error fetching showtime seats:', error);
+      message.error('Không thể tải thông tin ghế');
+      setShowtimeSeats([]);
+    } finally {
+      setSeatsLoading(false);
+    }
+  };
+
   // Xử lý khi nhấp vào một suất chiếu
-  const handleShowtimeClick = (showtime) => {
-    setSelectedShowtime(showtime);
-    setSelectedSeats([]); // Đặt lại danh sách ghế đã chọn khi thay đổi suất chiếu
-    setIsLayoutModalVisible(true);
+  const handleShowtimeClick = async (showtime) => {
+    try {
+      // First, get the full showtime details
+      const showtimeDetails = await showtimeApi.getShowtimeById(showtime.id);
+      const fullShowtimeData = showtimeDetails.content.showtime;
+
+      console.log('Full showtime data:', fullShowtimeData);
+
+      // Construct a comprehensive showtime object
+      const transformedShowtime = {
+        _id: fullShowtimeData._id,
+        // Lưu trữ movieId và screenId để sử dụng khi tạo booking
+        movieId: fullShowtimeData.movieId?._id || fullShowtimeData.movieId,
+        screenId: fullShowtimeData.screenId?._id || fullShowtimeData.screenId,
+        startTime: fullShowtimeData.startTime,
+        endTime: fullShowtimeData.endTime,
+        screenName: fullShowtimeData.screenId?.name || "Không xác định",
+        movieTitle: fullShowtimeData.movieId?.title || "Không xác định",
+        duration: fullShowtimeData.movieId?.duration,
+        prices: fullShowtimeData.price, // Use price directly from the API
+        theater: {
+          name: fullShowtimeData.screenId?.theaterId?.name || "Không xác định",
+          location: fullShowtimeData.screenId?.theaterId?.location
+        },
+        additionalDetails: {
+          createdAt: fullShowtimeData.createdAt,
+          updatedAt: fullShowtimeData.updatedAt,
+          isActive: fullShowtimeData.isActive
+        }
+      };
+
+      console.log('Transformed Showtime:', transformedShowtime);
+      console.log('Prices:', transformedShowtime.prices);
+
+      // Set the selected showtime with full details
+      setSelectedShowtime(transformedShowtime);
+
+      // Fetch seats for this showtime
+      await fetchShowtimeSeats(showtime.id);
+
+      // Reset selected seats and open the layout modal
+      setSelectedSeats([]);
+      setIsLayoutModalVisible(true);
+    } catch (error) {
+      console.error('Error fetching showtime details:', error);
+      message.error('Không thể tải thông tin suất chiếu');
+    }
   };
 
   // Xử lý khi xác nhận chọn suất chiếu và ghế
-  const handleShowtimeSelect = () => {
-    if (onShowtimeSelect && selectedShowtime) {
-      // Truyền cả ID suất chiếu và danh sách ghế đã chọn
-      onShowtimeSelect(selectedShowtime.id, selectedSeats);
+  const handleShowtimeSelect = async () => {
+    if (!selectedShowtime || selectedSeats.length === 0) {
+      message.warning('Vui lòng chọn ít nhất một ghế');
+      return;
     }
-    setIsLayoutModalVisible(false);
+
+    // Tính tổng tiền dựa trên ghế đã chọn
+    const totalPrice = calculateTotalPrice();
+
+    setIsBooking(true);
+
+    try {
+      // Chuẩn bị dữ liệu cho API booking - thêm đầy đủ thông tin theo yêu cầu API
+      const bookingData = {
+        showtimeId: selectedShowtime._id,
+        // Đảm bảo movieId và screenId từ response API được sử dụng
+        movieId: selectedShowtime.movieId || '',
+        screenId: selectedShowtime.screenId || '',
+        seats: selectedSeats.map(seat => seat.id),
+        seatDetails: selectedSeats.map(seat => ({
+          id: seat.id,
+          row: seat.row,
+          number: seat.number,
+          type: seat.type,
+          price: selectedShowtime.prices[seat.type] || 0
+        })),
+        totalPrice,
+        bookingDate: new Date().toISOString(),
+        movieTitle: selectedShowtime.movieTitle || '',
+        screenName: selectedShowtime.screenName || '',
+        startTime: selectedShowtime.startTime,
+        endTime: selectedShowtime.endTime,
+        theaterName: selectedShowtime.theater?.name || ''
+      };
+
+      console.log('Booking data sent to API:', bookingData);
+
+      // Gọi API tạo booking
+      const response = await bookingApi.createBooking(bookingData);
+      console.log('Booking response:', response);
+
+      // Hiển thị thông báo thành công
+      message.success('Đặt vé thành công!');
+
+      // Nếu có callback từ component cha, gọi nó
+      if (typeof onShowtimeSelect === 'function') {
+        onShowtimeSelect(selectedShowtime._id, selectedSeats);
+      }
+
+      // Đóng modal
+      setIsLayoutModalVisible(false);
+
+    } catch (error) {
+      console.error('Booking error:', error);
+      message.error('Đã xảy ra lỗi khi đặt vé: ' + (error.message || error.response?.data?.message || 'Vui lòng thử lại sau'));
+    } finally {
+      setIsBooking(false);
+    }
   };
 
-  // Xử lý khi nhấp vào một ghế
-  const handleSeatClick = (seatId, status, type) => {
-    if (status === 'available') {
-      // Chuyển đổi trạng thái chọn ghế
-      setSelectedSeats(prevSeats => {
-        const seatIndex = prevSeats.findIndex(seat => seat.id === seatId);
+  // Tính tổng giá tiền dựa trên ghế đã chọn
+  const calculateTotalPrice = () => {
+    if (!selectedShowtime || selectedSeats.length === 0) return 0;
 
-        if (seatIndex >= 0) {
-          // Bỏ chọn ghế nếu đã chọn trước đó
-          return prevSeats.filter(seat => seat.id !== seatId);
-        } else {
-          // Thêm ghế nếu chưa được chọn
-          return [...prevSeats, { id: seatId, type }];
-        }
-      });
-    }
+    // Use the prices directly from the showtime object
+    const prices = selectedShowtime.prices || {
+      standard: 0,
+      premium: 0,
+      vip: 0
+    };
+
+    return selectedSeats.reduce((total, seat) => {
+      const seatPrice = prices[seat.type] || 0;
+      return total + seatPrice;
+    }, 0);
   };
 
   // Định dạng thời gian từ chuỗi ngày
@@ -83,28 +209,6 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
   // Lấy danh sách ID rạp chiếu để hiển thị tabs
   const theaterIds = Object.keys(showtimesByTheater);
 
-  // Tạo cấu trúc dữ liệu rạp mẫu cho modal
-  const getTheaterData = () => {
-    // Thông thường dữ liệu này sẽ được lấy từ API dựa trên suất chiếu đã chọn
-    return {
-      name: selectedShowtime?.screenName || 'Screen 1',
-      rows: 9,
-      seatsPerRow: 9,
-      rowLabels: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
-      seats: []
-    };
-  };
-
-  // Tính tổng giá tiền dựa trên ghế đã chọn
-  const calculateTotalPrice = () => {
-    if (!selectedShowtime || selectedSeats.length === 0) return 0;
-
-    return selectedSeats.reduce((total, seat) => {
-      return total + (selectedShowtime.prices[seat.type] || 0);
-    }, 0);
-  };
-
-  // Hiển thị giao diện người dùng
   return (
     <Card
       title="Lịch chiếu"
@@ -122,7 +226,6 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
       {theaterIds.length > 0 ? (
         <Tabs
           defaultActiveKey={theaterIds[0]}
-          onChange={() => {/* Xử lý thay đổi rạp nếu cần */ }}
           tabPosition="left"
         >
           {/* Lặp qua từng rạp chiếu */}
@@ -207,9 +310,10 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
             key="book"
             type="primary"
             onClick={handleShowtimeSelect}
-            disabled={selectedSeats.length === 0}
+            disabled={selectedSeats.length === 0 || isBooking}
+            loading={isBooking}
           >
-            Đặt vé ({selectedSeats.length})
+            {isBooking ? 'Đang xử lý' : `Đặt vé (${selectedSeats.length})`}
           </Button>
         ]}
         width={800}
@@ -224,28 +328,39 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
 
             {/* Component bố cục rạp */}
             <TheaterLayout
-              theaterData={getTheaterData()}
-              onSeatClick={handleSeatClick}
-              readOnly={false}
-              selectedSeats={selectedSeats}
+              showtimeId={selectedShowtime._id}
+              seats={showtimeSeats}
+              editable={true}
+              onSeatSelect={setSelectedSeats}
+              showtimeDetails={selectedShowtime}
             />
 
             {/* Thông tin giá vé */}
             <div className="mt-4">
               <h4 className="font-semibold mb-2">Giá vé:</h4>
               <div className="grid grid-cols-3 gap-2">
-                <div className="text-center p-2 bg-gray-100 rounded">
-                  <div className="font-medium">Thường</div>
-                  <div>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(selectedShowtime.prices.standard)}</div>
-                </div>
-                <div className="text-center p-2 bg-gray-100 rounded">
-                  <div className="font-medium">Cao cấp</div>
-                  <div>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(selectedShowtime.prices.premium)}</div>
-                </div>
-                <div className="text-center p-2 bg-gray-100 rounded">
-                  <div className="font-medium">VIP</div>
-                  <div>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(selectedShowtime.prices.vip)}</div>
-                </div>
+                {['standard', 'premium', 'vip'].map((type) => {
+                  const priceLabel = {
+                    standard: 'Thường',
+                    premium: 'Cao cấp',
+                    vip: 'VIP'
+                  };
+
+                  // Directly access price from selectedShowtime.prices
+                  const price = selectedShowtime?.prices?.[type] || 0;
+
+                  return (
+                    <div key={type} className="text-center p-2 bg-gray-100 rounded">
+                      <div className="font-medium">{priceLabel[type]}</div>
+                      <div>
+                        {new Intl.NumberFormat('vi-VN', {
+                          style: 'currency',
+                          currency: 'VND'
+                        }).format(price)}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Hiển thị ghế đã chọn và tổng tiền */}
@@ -255,7 +370,7 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
                   <div className="flex flex-wrap gap-2">
                     {selectedSeats.map(seat => (
                       <span key={seat.id} className="px-2 py-1 bg-blue-100 rounded text-sm">
-                        {seat.id} ({seat.type === 'standard' ? 'Thường' :
+                        {seat.row}{seat.number} ({seat.type === 'standard' ? 'Thường' :
                           seat.type === 'premium' ? 'Cao cấp' : 'VIP'})
                       </span>
                     ))}
@@ -273,7 +388,6 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
   );
 };
 
-// Định nghĩa PropTypes để xác thực kiểu dữ liệu của props
 ShowtimeSection.propTypes = {
   showtimes: PropTypes.arrayOf(
     PropTypes.shape({
