@@ -21,11 +21,23 @@ const messageApi = {
 
   getConversation: async (otherUserId, limit = 50) => {
     try {
+
       const response = await api.get(
         `/messages/conversation/${otherUserId}?limit=${limit}`
       );
+
+      if (response.data.statusCode === 200 && response.data.content) {
+        if (
+          !response.data.content.messages ||
+          response.data.content.messages.length === 0
+        ) {
+          console.log("No messages found in API response");
+        }
+      }
+
       return response.data;
     } catch (error) {
+      console.error("API error:", error);
       return handleError(error);
     }
   },

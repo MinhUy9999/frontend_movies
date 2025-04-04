@@ -46,18 +46,16 @@ const AdminChat = () => {
       const fetchMessages = async () => {
         try {
           const response = await messageApi.getConversation(activeUser._id);
-          console.log('Fetch conversation response:', response); 
-          console.log('Active user:', activeUser);
           
           if (response.statusCode === 200 && response.content && response.content.messages) {
-            console.log('Setting messages:', response.content.messages.length, 'messages');
             setMessages(response.content.messages);
           } else {
-            console.error('Invalid response format or no messages:', response);
+            console.error('No messages in response:', response);
             setMessages([]);
           }
         } catch (error) {
           console.error('Error fetching messages:', error);
+          setMessages([]);
         }
       };
       
@@ -69,6 +67,7 @@ const AdminChat = () => {
     if (!activeUser || !userId) return;
     
     const unsubscribe = addEventListener('new_message', (data) => {
+      console.log('WebSocket new_message received in AdminChat:', data);
       if (data.message) {
         const isRelevantMessage = 
           (data.message.userId === activeUser._id && data.message.adminId === userId) ||
@@ -95,8 +94,9 @@ const AdminChat = () => {
       console.log('Send message response:', response);
       
       if (response.statusCode === 201 && response.content && response.content.message) {
-        console.log('Adding new message to state:', response.content.message);
-        setMessages(prev => [...prev, response.content.message]);
+        const newMsg = response.content.message;
+        console.log('Adding new message to state:', newMsg);
+        setMessages(prev => [...prev, newMsg]);
       } else {
         console.error('Error response from sendMessage:', response);
       }
@@ -113,19 +113,17 @@ const AdminChat = () => {
     try {
       const response = await messageApi.getConversation(user._id);
       
-      if (response.statusCode === 200 && response.content && response.content.messages) {
+      if (response.statusCode === 200 && response.content && Array.isArray(response.content.messages)) {
         setMessages(response.content.messages);
       } else {
+        console.error('No messages found or invalid response:', response);
         setMessages([]);
       }
       
       setConversations(prev => {
         return prev.map(conv => {
-          if (conv.type === 'user' && conv.user._id === user._id) {
-            return {
-              ...conv,
-              unreadCount: 0
-            };
+          if (conv.type === 'user' && conv.user && conv.user._id === user._id) {
+            return { ...conv, unreadCount: 0 };
           }
           return conv;
         });
@@ -151,7 +149,6 @@ const AdminChat = () => {
       });
     }
   }, [activeUser, messages]);
-
 
   if (loading) {
     return (
@@ -251,14 +248,25 @@ const AdminChat = () => {
             </div>
           ) : messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-gray-500">
-              Không có tin nhắn nào. Bắt đầu cuộc trò chuyện!
+              <div>
+                Không có tin nhắn nào. Bắt đầu cuộc trò chuyện!
+                <div className="text-xs mt-2 text-blue-500">
+                  Active User ID: {activeUser._id}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
+              <div className="text-xs text-blue-500 mb-2">
+                Hiển thị {messages.length} tin nhắn
+              </div>
               {messages.map((msg) => {
-                console.log('Rendering message:', msg); // Debug
                 
-                // Xác định người gửi là admin hay không
+                if (!msg || typeof msg !== 'object') {
+                  console.error('Invalid message format:', msg);
+                  return null;
+                }
+                
                 const isSentByMe = msg.sender === 'admin';
                 
                 return (
