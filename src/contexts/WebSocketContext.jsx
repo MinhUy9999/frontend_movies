@@ -1,22 +1,20 @@
-// src/contexts/WebSocketContext.jsx
 import { createContext, useContext, useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
 import websocketService from '../services/websocketService';
 
-// Tạo context WebSocket
 const WebSocketContext = createContext(null);
 
-// Component Provider cho WebSocket
 export const WebSocketProvider = ({ children }) => {
   const { isAuthenticated } = useSelector(state => state.user);
   const [isConnected, setIsConnected] = useState(false);
   const [notifications, setNotifications] = useState([]);
 
-  // Kết nối WebSocket khi đã xác thực
   useEffect(() => {
     let cleanupFunctions = [];
     let reconnectTimer = null;
+
+
 
     const setupWebSocket = async () => {
       if (isAuthenticated) {
@@ -25,18 +23,14 @@ export const WebSocketProvider = ({ children }) => {
           setIsConnected(connected);
 
           if (connected) {
-            // Lắng nghe thay đổi trạng thái kết nối
             const onOpenUnsubscribe = websocketService.addEventListener('connected', () => {
               setIsConnected(true);
             });
 
-            // Lắng nghe cập nhật ghế
             const onSeatsUpdatedUnsubscribe = websocketService.addEventListener('seats_updated', (data) => {
-              // Có thể gửi action Redux ở đây hoặc sử dụng callback
               console.log('Ghế đã được cập nhật cho suất chiếu:', data.showtimeId);
             });
 
-            // Lắng nghe thông báo đặt vé sắp hết hạn
             const onBookingExpiringUnsubscribe = websocketService.addEventListener('booking_expiring', (data) => {
               setNotifications(prev => [
                 ...prev,
@@ -49,7 +43,6 @@ export const WebSocketProvider = ({ children }) => {
               ]);
             });
 
-            // Lắng nghe thông báo đặt vé đã hết hạn
             const onBookingExpiredUnsubscribe = websocketService.addEventListener('booking_expired', (data) => {
               setNotifications(prev => [
                 ...prev,
@@ -62,24 +55,40 @@ export const WebSocketProvider = ({ children }) => {
               ]);
             });
 
-            // Thêm tất cả các hàm dọn dẹp
+            const onNewMessageUnsubscribe = websocketService.addEventListener('new_message', (data) => {
+              if (data.message) {
+                setNotifications(prev => [
+                  ...prev,
+                  {
+                    id: Date.now(),
+                    type: 'info',
+                    message: `Tin nhắn mới từ ${data.message.sender.username || 'Người dùng'}`,
+                    data: data.message
+                  }
+                ]);
+              }
+            });
+            
+            const onMessageReadUnsubscribe = websocketService.addEventListener('message_read', (data) => {
+              console.log('Tin nhắn đã được đọc:', data.messageId);
+            });
+
             cleanupFunctions = [
               onOpenUnsubscribe,
               onSeatsUpdatedUnsubscribe,
               onBookingExpiringUnsubscribe,
-              onBookingExpiredUnsubscribe
+              onBookingExpiredUnsubscribe,
+              onNewMessageUnsubscribe,
+              onMessageReadUnsubscribe,
             ];
           } else {
-            // Nếu không kết nối được nhưng đã xác thực, thử lại sau một khoảng thời gian
             reconnectTimer = setTimeout(setupWebSocket, 5000);
           }
         } catch (error) {
           console.error('Lỗi kết nối WebSocket:', error);
-          // Nếu kết nối thất bại, thử lại sau một khoảng thời gian
           reconnectTimer = setTimeout(setupWebSocket, 5000);
         }
       } else {
-        // Ngắt kết nối nếu chưa xác thực
         websocketService.disconnect();
         setIsConnected(false);
       }
@@ -87,7 +96,6 @@ export const WebSocketProvider = ({ children }) => {
 
     setupWebSocket();
 
-    // Hàm dọn dẹp
     return () => {
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
@@ -101,12 +109,10 @@ export const WebSocketProvider = ({ children }) => {
     };
   }, [isAuthenticated]);
 
-  // Hàm để xóa thông báo
   const clearNotification = (notificationId) => {
     setNotifications(prev => prev.filter(n => n.id !== notificationId));
   };
 
-  // Giá trị context
   const value = {
     isConnected,
     notifications,
@@ -123,14 +129,10 @@ export const WebSocketProvider = ({ children }) => {
   );
 };
 
-// Định nghĩa PropTypes
 WebSocketProvider.propTypes = {
   children: PropTypes.node.isRequired
 };
 
-// Hook để sử dụng WebSocket context (tách ra thành một file riêng)
-// src/hooks/useWebSocket.js để khắc phục lỗi "only-export-components"
-// Nếu bạn có thể tách file, thì sử dụng file riêng, còn không thì giữ nguyên ở đây
 const useWebSocket = () => {
   const context = useContext(WebSocketContext);
   if (!context) {

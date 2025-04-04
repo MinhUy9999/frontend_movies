@@ -11,6 +11,7 @@ import {
     BankOutlined,
     DesktopOutlined,
     CalendarOutlined,
+    MessageOutlined,
 } from "@ant-design/icons";
 import { logout } from "../../store/userSlice"; // Import logout action
 
@@ -44,6 +45,11 @@ const menuItems = [
         key: "showtimes",
         icon: <CalendarOutlined />, // Icon lịch chiếu
         label: <Link to="/admin/showtimes">Quản lý lịch chiếu</Link>,
+    },
+    {
+        key: "chat",
+        icon: <MessageOutlined />, // Icon tin nhắn
+        label: <Link to="/admin/chat">Quản lý tin nhắn</Link>,
     },
 ];
 
