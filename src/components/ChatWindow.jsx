@@ -12,7 +12,15 @@ const ChatWindow = ({ onClose }) => {
   const [admins, setAdmins] = useState([]);
   const [selectedAdmin, setSelectedAdmin] = useState(null);
   const messagesEndRef = useRef(null);
-  const { isConnected, addEventListener } = useWebSocket();
+  
+  const { 
+    isConnected, 
+    addMessage, 
+    getConversationMessages, 
+    markConversationAsRead,
+    notifyNewMessage 
+  } = useWebSocket();
+  
   const user = useSelector((state) => state.user) || {};
   const userId = user.id || localStorage.getItem('userId'); 
 
@@ -55,20 +63,48 @@ const ChatWindow = ({ onClose }) => {
   }, [selectedAdmin]);
 
   useEffect(() => {
+    if (selectedAdmin && userId) {
+      const fetchConversation = async () => {
+        try {
+          const response = await messageApi.getConversation(selectedAdmin._id);
+          if (response.statusCode === 200 && response.content && response.content.messages) {
+            response.content.messages.forEach(msg => addMessage(msg));
+            
+            const conversationMessages = getConversationMessages(userId, selectedAdmin._id);
+            setMessages(conversationMessages);
+            
+            markConversationAsRead(userId, selectedAdmin._id, 'user');
+          }
+        } catch (error) {
+          console.error('Error fetching conversation:', error);
+        }
+      };
+      
+      fetchConversation();
+    }
+  }, [selectedAdmin, userId, addMessage, getConversationMessages, markConversationAsRead]);
+
+  useEffect(() => {
     if (!selectedAdmin || !userId) return;
-  
-    const unsubscribe = addEventListener('new_message', (data) => {
-      console.log('WebSocket new_message received:', data);
+    
+    const handleNewMessage = (data) => {
+      console.log('WebSocket new_message received in ChatWindow:', data);
       if (data.message) {
         const isRelevantToCurrentChat = 
           (data.message.userId === userId && data.message.adminId === selectedAdmin._id) ||
           (data.message.adminId === selectedAdmin._id && data.message.userId === userId);
         
         if (isRelevantToCurrentChat) {
-          setMessages(prev => [...prev, data.message]);
+          setMessages(prev => {
+            const exists = prev.some(msg => msg._id === data.message._id);
+            if (exists) return prev;
+            return [...prev, data.message];
+          });
         }
       }
-    });
+    };
+  
+    const unsubscribe = addEventListener('new_message', handleNewMessage);
     
     return () => unsubscribe();
   }, [addEventListener, selectedAdmin, userId]);
@@ -81,13 +117,19 @@ const ChatWindow = ({ onClose }) => {
     if (!newMessage.trim() || !selectedAdmin) return;
     
     try {
+      console.log('Sending message to admin:', selectedAdmin._id);
       const response = await messageApi.sendMessage(selectedAdmin._id, newMessage);
       console.log('Send message response:', response);
       
       if (response.statusCode === 201 && response.content && response.content.message) {
         const newMsg = response.content.message;
-        console.log('Adding new message to state:', newMsg);
+        console.log('Adding new message to state and context:', newMsg);
+        
+        addMessage(newMsg);
+        
         setMessages(prev => [...prev, newMsg]);
+        
+        notifyNewMessage(newMsg);
       }
       
       setNewMessage('');
