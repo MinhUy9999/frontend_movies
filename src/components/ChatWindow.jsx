@@ -1,8 +1,7 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { X, Send } from 'lucide-react';
-import { useWebSocket } from '../contexts/WebSocketContext';
+import { useSocket } from '../contexts/WebSocketContext';
 import messageApi from '../apis/messageApi';
 
 const ChatWindow = ({ onClose }) => {
@@ -11,6 +10,7 @@ const ChatWindow = ({ onClose }) => {
   const [loading, setLoading] = useState(true);
   const [admins, setAdmins] = useState([]);
   const [selectedAdmin, setSelectedAdmin] = useState(null);
+  const [conversation, setConversation] = useState(null);
   const messagesEndRef = useRef(null);
   
   const { 
@@ -18,10 +18,9 @@ const ChatWindow = ({ onClose }) => {
     isConnected, 
     addMessage, 
     getConversationMessages, 
-
+    sendMessage,
     markConversationAsRead,
-    notifyNewMessage
-  } = useWebSocket();
+  } = useSocket();
 
   const user = useSelector((state) => state.user) || {};
   const userId = user.id || localStorage.getItem('userId');
@@ -48,37 +47,33 @@ const ChatWindow = ({ onClose }) => {
   }, []);
 
   useEffect(() => {
-    if (selectedAdmin) {
-      const fetchConversation = async () => {
-        try {
-          const response = await messageApi.getConversation(selectedAdmin._id);
-          if (response.statusCode === 200 && response.content && response.content.messages) {
-            setMessages(response.content.messages);
-          }
-        } catch (error) {
-          console.error('Error fetching conversation:', error);
-        }
-      };
-
-      fetchConversation();
-    }
-  }, [selectedAdmin]);
-
-  useEffect(() => {
     if (selectedAdmin && userId) {
       const fetchConversation = async () => {
         try {
+          setLoading(true);
           const response = await messageApi.getConversation(selectedAdmin._id);
-          if (response.statusCode === 200 && response.content && response.content.messages) {
-            response.content.messages.forEach(msg => addMessage(msg));
-
-            const conversationMessages = getConversationMessages(userId, selectedAdmin._id);
-            setMessages(conversationMessages);
-
-            markConversationAsRead(userId, selectedAdmin._id, 'user');
+          
+          if (response.statusCode === 200 && response.content) {
+            if (response.content.conversation) {
+              setConversation(response.content.conversation);
+            }
+            
+            if (response.content.messages) {
+              // Add messages to global context
+              response.content.messages.forEach(msg => addMessage(msg));
+              
+              // Get messages for this conversation
+              const conversationMessages = getConversationMessages(userId, selectedAdmin._id);
+              setMessages(conversationMessages);
+              
+              // Mark conversation as read
+              markConversationAsRead(userId, selectedAdmin._id, 'user');
+            }
           }
+          setLoading(false);
         } catch (error) {
           console.error('Error fetching conversation:', error);
+          setLoading(false);
         }
       };
 
@@ -87,10 +82,10 @@ const ChatWindow = ({ onClose }) => {
   }, [selectedAdmin, userId, addMessage, getConversationMessages, markConversationAsRead]);
 
   useEffect(() => {
-    if (!selectedAdmin || !userId) return;
+    if (!selectedAdmin || !userId || !conversation) return;
 
     const handleNewMessage = (data) => {
-      console.log('WebSocket new_message received in ChatWindow:', data);
+      console.log('Socket.IO new_message received in ChatWindow:', data);
       
       if (data.message) {
         const msg = data.message;
@@ -109,18 +104,19 @@ const ChatWindow = ({ onClose }) => {
         }
       }
     };
+    
     console.log('Adding new_message listener in ChatWindow');
     const unsubscribe = addEventListener('new_message', handleNewMessage);
 
     return () => unsubscribe();
-  }, [addEventListener, selectedAdmin, userId]);
+  }, [addEventListener, selectedAdmin, userId, conversation]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedAdmin) return;
+    if (!newMessage.trim() || !selectedAdmin || !conversation) return;
 
     try {
       console.log('Sending message to admin:', selectedAdmin._id);
@@ -141,36 +137,34 @@ const ChatWindow = ({ onClose }) => {
       // Update UI immediately
       setMessages(prev => [...prev, tempMsg]);
       
-      // Clear input before the API call
+      // Clear input before sending
       const messageToSend = newMessage;
       setNewMessage('');
       
-      // Send to server
-      const response = await messageApi.sendMessage(selectedAdmin._id, messageToSend);
-      console.log('Send message response:', response);
-
-      if (response.statusCode === 201 && response.content && response.content.message) {
-        const newMsg = response.content.message;
+      // Send via Socket.IO
+      sendMessage(conversation._id, messageToSend, (response) => {
+        console.log('Send message response:', response);
         
-        // Replace temp message with real one from server
-        setMessages(prev => prev.map(msg => 
-          msg._id === tempId ? newMsg : msg
-        ));
-        
-        // Add to global message store in WebSocketContext
-        addMessage(newMsg);
-        
-        // Notify other clients via WebSocket
-        notifyNewMessage(newMsg);
-      } else {
-        console.error('Error response from sendMessage:', response);
-        // Show error and remove temp message
-        setMessages(prev => prev.filter(msg => msg._id !== tempId));
-        message.error('Failed to send message');
-      }
+        if (response.success && response.message) {
+          const newMsg = response.message;
+          
+          // Replace temp message with real one from server
+          setMessages(prev => prev.map(msg => 
+            msg._id === tempId ? newMsg : msg
+          ));
+          
+          // Add to global message store
+          addMessage(newMsg);
+        } else {
+          console.error('Error response from sendMessage:', response);
+          // Show error and remove temp message
+          setMessages(prev => prev.filter(msg => msg._id !== tempId));
+          alert('Failed to send message');
+        }
+      });
     } catch (error) {
       console.error('Error sending message:', error);
-      message.error('Error sending message. Please try again.');
+      alert('Error sending message. Please try again.');
     }
   };
 
@@ -226,7 +220,6 @@ const ChatWindow = ({ onClose }) => {
           </div>
         ) : (
           messages.map((msg) => {
-
             if (!msg || typeof msg !== 'object') {
               console.error('Invalid message format:', msg);
               return null;
@@ -248,6 +241,7 @@ const ChatWindow = ({ onClose }) => {
                   {msg.content}
                   <div className={`text-xs mt-1 ${isSentByMe ? 'text-blue-200' : 'text-gray-500'}`}>
                     {new Date(msg.createdAt).toLocaleTimeString()}
+                    {msg.isRead && isSentByMe && <span className="ml-1">✓</span>}
                   </div>
                 </div>
               </div>
@@ -266,11 +260,11 @@ const ChatWindow = ({ onClose }) => {
           onKeyPress={handleKeyPress}
           placeholder="Nhập tin nhắn..."
           className="flex-1 p-2 border rounded-l-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={!selectedAdmin}
+          disabled={!selectedAdmin || !conversation}
         />
         <button
           onClick={handleSendMessage}
-          disabled={!newMessage.trim() || !selectedAdmin}
+          disabled={!newMessage.trim() || !selectedAdmin || !conversation}
           className="bg-blue-600 text-white p-2 rounded-r-lg hover:bg-blue-700 disabled:bg-blue-300"
         >
           <Send size={20} />

@@ -313,9 +313,6 @@ const AdminChat = () => {
             <div className="flex items-center justify-center h-full text-gray-500">
               <div>
                 Không có tin nhắn nào. Bắt đầu cuộc trò chuyện!
-                <div className="text-xs mt-2 text-blue-500">
-                  Active User ID: {activeUser._id}
-                </div>
               </div>
             </div>
           ) : (

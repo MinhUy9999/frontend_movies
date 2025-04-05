@@ -1,253 +1,196 @@
-// src/services/websocketService.js
-import { userApi } from "../apis/userApi";
+import { io } from "socket.io-client";
+import { messageApi } from "../apis/messageApi";
 
-class WebSocketService {
+class SocketService {
   constructor() {
     this.socket = null;
     this.listeners = new Map();
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
-    this.reconnectDelay = 3000;
-  }
-
-  notifyNewMessage(message) {
-    if (this.listeners.has("new_message")) {
-      const callbacks = this.listeners.get("new_message");
-      callbacks.forEach((callback) =>
-        callback({
-          type: "new_message",
-          message,
-        })
-      );
-    }
+    this.isConnected = false;
   }
 
   async connect() {
     try {
-      let wsToken;
-      try {
-        const response = await userApi.getWebSocketToken();
-        if (
-          response.statusCode === 200 &&
-          response.content &&
-          response.content.wsToken
-        ) {
-          wsToken = response.content.wsToken;
-        } else {
-          console.warn("WebSocket token response invalid:", response);
-          return this.setupMockWebSocket();
-        }
-      } catch (error) {
-        console.warn("Error getting WebSocket token:", error);
-        return this.setupMockWebSocket();
-      }
+      // Get token for socket authentication
+      const response = await messageApi.getSocketToken();
 
-      let wsUrl;
-      const backendUrl =
-        import.meta.env.VITE_API_URL || "http://localhost:10000/api";
-
-      const baseUrl = backendUrl.replace(/\/api$/, "");
-
-      const wsProtocol = baseUrl.startsWith("https") ? "wss://" : "ws://";
-
-      const hostPortion = baseUrl.replace(/^https?:\/\//, "");
-
-      wsUrl = `${wsProtocol}${hostPortion}/ws?token=${wsToken}`;
-
-      try {
-        this.socket = new WebSocket(wsUrl);
-
-        this.socket.onopen = this.handleOpen.bind(this);
-        this.socket.onmessage = this.handleMessage.bind(this);
-        this.socket.onclose = this.handleClose.bind(this);
-        this.socket.onerror = this.handleError.bind(this);
-
-        return new Promise((resolve, reject) => {
-          this.socket.addEventListener("open", () => resolve(true), {
-            once: true,
-          });
-          this.socket.addEventListener(
-            "error",
-            () => {
-              if (import.meta.env.DEV) {
-                resolve(this.setupMockWebSocket());
-              } else {
-                reject(new Error("WebSocket connection failed"));
-              }
-            },
-            { once: true }
-          );
-
-          setTimeout(() => {
-            if (this.socket.readyState !== WebSocket.OPEN) {
-              if (import.meta.env.DEV) {
-                resolve(this.setupMockWebSocket());
-              } else {
-                reject(new Error("WebSocket connection timeout"));
-              }
-            }
-          }, 5000);
-        });
-      } catch (error) {
-        console.error("Error creating WebSocket:", error);
-
-        if (import.meta.env.DEV) {
-          return this.setupMockWebSocket();
-        }
+      if (
+        response.statusCode !== 200 ||
+        !response.content ||
+        !response.content.token
+      ) {
+        console.error("Failed to get socket token:", response);
         return false;
       }
+
+      const token = response.content.token;
+
+      // Determine socket URL based on API URL
+      const baseUrl =
+        import.meta.env.VITE_API_URL ||
+        "https://backend-movies-busc.onrender.com";
+      const socketUrl = baseUrl.replace(/\/api$/, "");
+
+      // Create socket connection with auth
+      this.socket = io(socketUrl, {
+        auth: { token },
+        reconnection: true,
+        reconnectionAttempts: this.maxReconnectAttempts,
+        reconnectionDelay: 3000,
+        withCredentials: true,
+      });
+
+      // Set up event handlers
+      this.socket.on("connect", this.handleConnect.bind(this));
+      this.socket.on("disconnect", this.handleDisconnect.bind(this));
+      this.socket.on("connect_error", this.handleError.bind(this));
+
+      // Set up listeners for specific events
+      this.socket.on("new_message", (data) =>
+        this.triggerEvent("new_message", data)
+      );
+      this.socket.on("message_read", (data) =>
+        this.triggerEvent("message_read", data)
+      );
+      this.socket.on("all_messages_read", (data) =>
+        this.triggerEvent("all_messages_read", data)
+      );
+      this.socket.on("typing", (data) => this.triggerEvent("typing", data));
+
+      // Wait for connection to be established
+      return new Promise((resolve) => {
+        this.socket.once("connect", () => {
+          this.isConnected = true;
+          resolve(true);
+        });
+
+        // If connection fails, resolve with false after timeout
+        setTimeout(() => {
+          if (!this.isConnected) {
+            console.warn("Socket connection timeout");
+            resolve(false);
+          }
+        }, 5000);
+      });
     } catch (error) {
-      console.error("WebSocket connection error:", error);
+      console.error("Error connecting to socket:", error);
       return false;
     }
   }
 
-  setupMockWebSocket() {
-    this.socket = {
-      readyState: WebSocket.OPEN,
-      send: (data) => {
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.type === "ping") {
-            setTimeout(() => {
-              this.handleMessage({
-                data: JSON.stringify({
-                  type: "pong",
-                  timestamp: Date.now(),
-                }),
-              });
-            }, 100);
-          }
-        } catch (e) {
-          console.error("Error parsing mock message:", e);
-        }
-      },
-      close: () => {
-        this.socket = null;
-      },
-    };
-
-    setTimeout(() => {
-      this.handleOpen();
-
-      this.handleMessage({
-        data: JSON.stringify({
-          type: "connected",
-          message: "Successfully connected to booking service (mock)",
-        }),
-      });
-
-      setTimeout(() => {
-        this.handleMessage({
-          data: JSON.stringify({
-            type: "booking_expiring",
-            bookingId: "mock-booking-123",
-            minutesLeft: 5,
-          }),
-        });
-
-        setTimeout(() => {
-          this.handleMessage({
-            data: JSON.stringify({
-              type: "seats_updated",
-              showtimeId: "mock-showtime-456",
-            }),
-          });
-        }, 5000);
-      }, 10000);
-    }, 500);
-
-    return true;
-  }
-
-  handleOpen() {
+  handleConnect() {
+    console.log("Socket connected");
+    this.isConnected = true;
     this.reconnectAttempts = 0;
-
-    this.pingInterval = setInterval(() => {
-      this.sendMessage({
-        type: "ping",
-        timestamp: Date.now(),
-      });
-    }, 30000);
+    this.triggerEvent("connected", { connected: true });
   }
 
-  handleMessage(event) {
-    try {
-      const data = JSON.parse(event.data);
-      console.log("Raw WebSocket message received:", data);
-
-      if (data.type === "new_message") {
-        console.log("Chat message received via WebSocket:", data.message);
-      }
-
-      // Immediately dispatch to listeners (with a small setTimeout to break call stack)
-      if (data.type && this.listeners.has(data.type)) {
-        const callbacks = this.listeners.get(data.type);
-        callbacks.forEach((callback) => setTimeout(() => callback(data), 0));
-      }
-
-      // Also dispatch to wildcard listeners
-      if (this.listeners.has("*")) {
-        const callbacks = this.listeners.get("*");
-        callbacks.forEach((callback) => setTimeout(() => callback(data), 0));
-      }
-    } catch (error) {
-      console.error("Error parsing WebSocket message:", error);
-    }
-  }
-
-  handleClose(event) {
-    clearInterval(this.pingInterval);
-
-    if (
-      event.code !== 1000 &&
-      this.reconnectAttempts < this.maxReconnectAttempts
-    ) {
-      this.reconnectAttempts++;
-
-      setTimeout(() => {
-        this.connect();
-      }, this.reconnectDelay * this.reconnectAttempts);
-    }
+  handleDisconnect(reason) {
+    console.log("Socket disconnected:", reason);
+    this.isConnected = false;
+    this.triggerEvent("disconnected", { reason });
   }
 
   handleError(error) {
-    console.error("WebSocket error:", error);
+    console.error("Socket connection error:", error);
+    this.triggerEvent("error", { error });
   }
 
-  sendMessage(data) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(data));
-      return true;
-    } else {
-      console.error("WebSocket not connected. Cannot send message.");
+  // Send a message using Socket.IO
+  sendMessage(conversationId, content, callback) {
+    if (!this.socket || !this.isConnected) {
+      console.error("Socket not connected. Cannot send message.");
+      if (callback) callback({ success: false, error: "Socket not connected" });
       return false;
     }
+
+    this.socket.emit("send_message", { conversationId, content }, callback);
+    return true;
   }
 
-  addEventListener(type, callback) {
-    if (!this.listeners.has(type)) {
-      this.listeners.set(type, new Set());
+  // Mark a message as read
+  markMessageAsRead(messageId, callback) {
+    if (!this.socket || !this.isConnected) {
+      console.error("Socket not connected. Cannot mark message as read.");
+      if (callback) callback({ success: false, error: "Socket not connected" });
+      return false;
     }
 
-    this.listeners.get(type).add(callback);
-    return () => this.removeEventListener(type, callback);
+    this.socket.emit("mark_read", { messageId }, callback);
+    return true;
   }
 
-  removeEventListener(type, callback) {
-    if (this.listeners.has(type)) {
-      this.listeners.get(type).delete(callback);
+  // Mark all messages in a conversation as read
+  markAllAsRead(conversationId, callback) {
+    if (!this.socket || !this.isConnected) {
+      console.error("Socket not connected. Cannot mark all as read.");
+      if (callback) callback({ success: false, error: "Socket not connected" });
+      return false;
+    }
+
+    this.socket.emit("mark_all_read", { conversationId }, callback);
+    return true;
+  }
+
+  // Send typing status
+  sendTypingStatus(conversationId, isTyping) {
+    if (!this.socket || !this.isConnected) {
+      console.error("Socket not connected. Cannot send typing status.");
+      return false;
+    }
+
+    this.socket.emit("typing", { conversationId, isTyping });
+    return true;
+  }
+
+  // Add event listener
+  addEventListener(event, callback) {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+
+    this.listeners.get(event).add(callback);
+    return () => this.removeEventListener(event, callback);
+  }
+
+  // Remove event listener
+  removeEventListener(event, callback) {
+    if (this.listeners.has(event)) {
+      this.listeners.get(event).delete(callback);
     }
   }
 
+  // Trigger event for all registered listeners
+  triggerEvent(event, data) {
+    if (this.listeners.has(event)) {
+      const callbacks = this.listeners.get(event);
+      callbacks.forEach((callback) => setTimeout(() => callback(data), 0));
+    }
+
+    // Also trigger for wildcard listeners
+    if (this.listeners.has("*")) {
+      const callbacks = this.listeners.get("*");
+      callbacks.forEach((callback) =>
+        setTimeout(() => callback({ type: event, ...data }), 0)
+      );
+    }
+  }
+
+  // Notify about new message (used for local state updates)
+  notifyNewMessage(message) {
+    this.triggerEvent("new_message", { message });
+  }
+
+  // Disconnect socket
   disconnect() {
     if (this.socket) {
-      this.socket.close();
+      this.socket.disconnect();
       this.socket = null;
-      clearInterval(this.pingInterval);
+      this.isConnected = false;
     }
   }
 }
 
-export const websocketService = new WebSocketService();
-export default websocketService;
+export const socketService = new SocketService();
+export default socketService;

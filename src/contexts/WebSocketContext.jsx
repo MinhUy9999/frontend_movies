@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
-import websocketService from '../services/websocketService';
+import socketService from '../services/websocketService';
 
-const WebSocketContext = createContext(null);
+const SocketContext = createContext(null);
 
-export const WebSocketProvider = ({ children }) => {
+export const SocketProvider = ({ children }) => {
   const user = useSelector(state => state.user);
   const isAuthenticated = user?.isAuthenticated;
   const userId = user?.id;
@@ -20,49 +20,24 @@ export const WebSocketProvider = ({ children }) => {
 
   useEffect(() => {
     let cleanupFunctions = [];
-    let reconnectTimer = null;
 
-    const setupWebSocket = async () => {
+    const setupSocket = async () => {
       if (isAuthenticated) {
         try {
-          const connected = await websocketService.connect();
+          const connected = await socketService.connect();
           setIsConnected(connected);
 
           if (connected) {
-            
-            const onOpenUnsubscribe = websocketService.addEventListener('connected', () => {
+            const onConnectedUnsubscribe = socketService.addEventListener('connected', () => {
               setIsConnected(true);
             });
 
-            const onSeatsUpdatedUnsubscribe = websocketService.addEventListener('seats_updated', () => {
+            const onDisconnectedUnsubscribe = socketService.addEventListener('disconnected', () => {
+              setIsConnected(false);
             });
 
-            const onBookingExpiringUnsubscribe = websocketService.addEventListener('booking_expiring', (data) => {
-              setNotifications(prev => [
-                ...prev,
-                {
-                  id: Date.now(),
-                  type: 'warning',
-                  message: `Đặt vé của bạn sẽ hết hạn trong ${data.minutesLeft} phút!`,
-                  bookingId: data.bookingId
-                }
-              ]);
-            });
-
-            const onBookingExpiredUnsubscribe = websocketService.addEventListener('booking_expired', (data) => {
-              setNotifications(prev => [
-                ...prev,
-                {
-                  id: Date.now(),
-                  type: 'error',
-                  message: 'Đặt vé của bạn đã hết hạn',
-                  bookingId: data.bookingId
-                }
-              ]);
-            });
-
-            const onNewMessageUnsubscribe = websocketService.addEventListener('new_message', (data) => {
-              console.log('New message received via WebSocket context:', data);
+            const onNewMessageUnsubscribe = socketService.addEventListener('new_message', (data) => {
+              console.log('New message received via Socket.IO:', data);
               
               if (data.message) {
                 // Normalize the message format
@@ -104,8 +79,7 @@ export const WebSocketProvider = ({ children }) => {
               }
             });
             
-            const onMessageReadUnsubscribe = websocketService.addEventListener('message_read', (data) => {
-              
+            const onMessageReadUnsubscribe = socketService.addEventListener('message_read', (data) => {
               setMessages(prev => 
                 prev.map(msg => 
                   msg._id === data.messageId ? { ...msg, isRead: true } : msg
@@ -114,37 +88,32 @@ export const WebSocketProvider = ({ children }) => {
             });
 
             cleanupFunctions = [
-              onOpenUnsubscribe,
-              onSeatsUpdatedUnsubscribe,
-              onBookingExpiringUnsubscribe,
-              onBookingExpiredUnsubscribe,
+              onConnectedUnsubscribe,
+              onDisconnectedUnsubscribe,
               onNewMessageUnsubscribe,
               onMessageReadUnsubscribe,
             ];
           } else {
-            console.error('Không thể kết nối WebSocket. Kiểm tra URL và token.');
+            console.error('Could not connect to Socket.IO. Check the URL and token.');
           }
         } catch (error) {
-          console.error('Lỗi kết nối WebSocket:', error);
+          console.error('Error connecting to Socket.IO:', error);
         }
       } else {
-        websocketService.disconnect();
+        socketService.disconnect();
         setIsConnected(false);
       }
     };
 
-    setupWebSocket();
+    setupSocket();
 
     return () => {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-      }
       cleanupFunctions.forEach(cleanup => {
         if (typeof cleanup === 'function') {
           cleanup();
         }
       });
-      websocketService.disconnect();
+      socketService.disconnect();
     };
   }, [isAuthenticated, userId]);
 
@@ -166,6 +135,14 @@ export const WebSocketProvider = ({ children }) => {
       (msg.userId === adminId && msg.adminId === userId)
     ).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   }, [messages]);
+  
+  const sendMessage = useCallback((conversationId, content, callback) => {
+    return socketService.sendMessage(conversationId, content, callback);
+  }, []);
+  
+  const markAsRead = useCallback((messageId, callback) => {
+    return socketService.markMessageAsRead(messageId, callback);
+  }, []);
   
   const markConversationAsRead = useCallback((userId, adminId, currentUserRole) => {
     setMessages(prev => 
@@ -189,9 +166,7 @@ export const WebSocketProvider = ({ children }) => {
   }, []);
   
   const notifyNewMessage = useCallback((message) => {
-    if (websocketService && typeof websocketService.notifyNewMessage === 'function') {
-      websocketService.notifyNewMessage(message);
-    }
+    socketService.notifyNewMessage(message);
   }, []);
 
   const value = {
@@ -201,30 +176,31 @@ export const WebSocketProvider = ({ children }) => {
     messages,
     addMessage,
     getConversationMessages,
+    sendMessage,
+    markAsRead,
     markConversationAsRead,
     notifyNewMessage,
     chatState,
     setChatState,
-    sendMessage: websocketService.sendMessage.bind(websocketService),
-    addEventListener: websocketService.addEventListener.bind(websocketService),
-    removeEventListener: websocketService.removeEventListener.bind(websocketService)
+    addEventListener: socketService.addEventListener.bind(socketService),
+    removeEventListener: socketService.removeEventListener.bind(socketService)
   };
 
   return (
-    <WebSocketContext.Provider value={value}>
+    <SocketContext.Provider value={value}>
       {children}
-    </WebSocketContext.Provider>
+    </SocketContext.Provider>
   );
 };
 
-WebSocketProvider.propTypes = {
+SocketProvider.propTypes = {
   children: PropTypes.node.isRequired
 };
 
-export const useWebSocket = () => {
-  const context = useContext(WebSocketContext);
+export const useSocket = () => {
+  const context = useContext(SocketContext);
   if (!context) {
-    throw new Error('useWebSocket phải được sử dụng trong WebSocketProvider');
+    throw new Error('useSocket must be used within a SocketProvider');
   }
   return context;
 };
