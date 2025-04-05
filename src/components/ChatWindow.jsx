@@ -5,6 +5,7 @@ import { useSocket } from '../contexts/WebSocketContext';
 import messageApi from '../apis/messageApi';
 
 const ChatWindow = ({ onClose }) => {
+  const userRole = useSelector(state => state.user.role);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [admins, setAdmins] = useState([]);
@@ -26,26 +27,39 @@ const ChatWindow = ({ onClose }) => {
   const messages = selectedAdmin ? 
     getConversationMessages(userId, selectedAdmin._id) : [];
 
-  useEffect(() => {
-    const fetchAdmins = async () => {
-      try {
-        const response = await messageApi.getAvailableAdmins();
-        if (response.statusCode === 200 && response.content && response.content.admins) {
-          setAdmins(response.content.admins);
-
-          if (response.content.admins.length > 0) {
-            setSelectedAdmin(response.content.admins[0]);
+    useEffect(() => {
+      const fetchAdmins = async () => {
+        try {
+          console.log('Redux User Role:', userRole);
+          console.log('LocalStorage User Role:', localStorage.getItem('userRole'));
+  
+          if (userRole !== 'user') {
+            console.error('Access Denied: Not a user role');
+            setLoading(false);
+            return;
           }
+  
+          const response = await messageApi.getAvailableAdmins();
+          console.log('Available Admins Full Response:', response);
+          
+          if (response.statusCode === 200 && 
+              response.content && 
+              response.content.admins && 
+              response.content.admins.length > 0) {
+            console.log('Admins found:', response.content.admins);
+            setAdmins(response.content.admins);
+          } else {
+            console.warn('No admins found or invalid response');
+          }
+          setLoading(false);
+        } catch (error) {
+          console.error('Complete error fetching admins:', error);
+          setLoading(false);
         }
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching admins:', error);
-        setLoading(false);
-      }
-    };
-
-    fetchAdmins();
-  }, []);
+      };
+  
+      fetchAdmins();
+    }, [userRole]);
 
   useEffect(() => {
     if (selectedAdmin && userId) {

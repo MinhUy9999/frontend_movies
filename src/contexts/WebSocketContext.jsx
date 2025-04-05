@@ -54,6 +54,7 @@ export const SocketProvider = ({ children }) => {
               }
             });
             
+            
             const onMessageReadUnsubscribe = socketService.addEventListener('message_read', (data) => {
               if (data.messageId) {
                 setMessages(prev => 

@@ -45,7 +45,9 @@ const messageApi = {
 
   getAvailableAdmins: async () => {
     try {
+      console.log("Calling getAvailableAdmins API");
       const response = await api.get("/chat/admins");
+      console.log("API Response:", response);
       return {
         statusCode: response.status,
         content: response.data.content,
@@ -53,6 +55,7 @@ const messageApi = {
         date: new Date().toISOString(),
       };
     } catch (error) {
+      console.error("Complete error in getAvailableAdmins:", error);
       return handleError(error);
     }
   },
