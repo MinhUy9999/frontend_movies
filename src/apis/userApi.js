@@ -1,8 +1,6 @@
-// apis/userApi.js
-import { api, handleError } from "./index"; // Import từ index.js
+import { api, handleError } from "./index";
 
 const userApi = {
-  // Đăng ký người dùng
   async register(userData) {
     try {
       const response = await api.post("/users/register", userData);
@@ -12,7 +10,6 @@ const userApi = {
     }
   },
 
-  // Get WebSocket token for real-time features
   async getWebSocketToken() {
     try {
       const response = await api.get("/users/ws-token");
@@ -22,7 +19,6 @@ const userApi = {
     }
   },
 
-  // Đăng nhập
   async login(credentials) {
     try {
       const response = await api.post("/users/login", credentials);
@@ -32,7 +28,6 @@ const userApi = {
     }
   },
 
-  // Làm mới token
   async refreshToken() {
     try {
       const response = await api.post("/users/refresh-token");
@@ -42,7 +37,6 @@ const userApi = {
     }
   },
 
-  // Đăng xuất
   async logout() {
     try {
       const response = await api.post("/users/logout");
@@ -52,7 +46,6 @@ const userApi = {
     }
   },
 
-  // Gửi email quên mật khẩu
   async forgotPassword(email) {
     try {
       const response = await api.post("/users/forgot-password", email);
@@ -62,7 +55,6 @@ const userApi = {
     }
   },
 
-  // Đặt lại mật khẩu
   async resetPassword(data) {
     try {
       const response = await api.post("/users/reset-password", data);
@@ -71,7 +63,7 @@ const userApi = {
       return handleError(error);
     }
   },
-  // Lấy thông tin người dùng theo ID
+
   async getUserById(id) {
     try {
       const response = await api.get(`/users/${id}`);
@@ -81,7 +73,6 @@ const userApi = {
     }
   },
 
-  // Cập nhật thông tin người dùng (yêu cầu admin)
   async updateUser(id, updateData) {
     try {
       const response = await api.put(`/users/${id}`, updateData);
@@ -91,7 +82,6 @@ const userApi = {
     }
   },
 
-  // Xóa người dùng (yêu cầu admin)
   async deleteUser(id) {
     try {
       const response = await api.delete(`/users/${id}`);
@@ -101,7 +91,6 @@ const userApi = {
     }
   },
 
-  // Lấy danh sách tất cả người dùng (yêu cầu admin)
   async getAllUsers() {
     try {
       const response = await api.get("/admin/users");
