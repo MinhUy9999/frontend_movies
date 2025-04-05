@@ -12,7 +12,15 @@ const ChatWindow = ({ onClose }) => {
   const [admins, setAdmins] = useState([]);
   const [selectedAdmin, setSelectedAdmin] = useState(null);
   const messagesEndRef = useRef(null);
-  const { isConnected, addEventListener } = useWebSocket();
+
+  const {
+    isConnected,
+    addMessage,
+    getConversationMessages,
+    markConversationAsRead,
+    notifyNewMessage
+  } = useWebSocket();
+
   const user = useSelector((state) => state.user) || {};
   const userId = user.id || localStorage.getItem('userId');
 
@@ -37,7 +45,6 @@ const ChatWindow = ({ onClose }) => {
     fetchAdmins();
   }, []);
 
-  // Fetch conversation with selected admin
   useEffect(() => {
     if (selectedAdmin) {
       const fetchConversation = async () => {
@@ -55,23 +62,53 @@ const ChatWindow = ({ onClose }) => {
     }
   }, [selectedAdmin]);
 
-  // Setup WebSocket listener for new messages
   useEffect(() => {
-    const unsubscribe = addEventListener('new_message', (data) => {
-      // Sửa điều kiện kiểm tra để tránh lỗi undefined
-      if (data.message &&
-        ((data.message.sender._id === selectedAdmin?._id) ||
-          (userId && data.message.sender._id === userId))) {
-        setMessages(prev => [...prev, data.message]);
-      }
-    });
+    if (selectedAdmin && userId) {
+      const fetchConversation = async () => {
+        try {
+          const response = await messageApi.getConversation(selectedAdmin._id);
+          if (response.statusCode === 200 && response.content && response.content.messages) {
+            response.content.messages.forEach(msg => addMessage(msg));
 
-    return () => {
-      unsubscribe();
+            const conversationMessages = getConversationMessages(userId, selectedAdmin._id);
+            setMessages(conversationMessages);
+
+            markConversationAsRead(userId, selectedAdmin._id, 'user');
+          }
+        } catch (error) {
+          console.error('Error fetching conversation:', error);
+        }
+      };
+
+      fetchConversation();
+    }
+  }, [selectedAdmin, userId, addMessage, getConversationMessages, markConversationAsRead]);
+
+  useEffect(() => {
+    if (!selectedAdmin || !userId) return;
+
+    const handleNewMessage = (data) => {
+      console.log('WebSocket new_message received in ChatWindow:', data);
+      if (data.message) {
+        const isRelevantToCurrentChat =
+          (data.message.userId === userId && data.message.adminId === selectedAdmin._id) ||
+          (data.message.adminId === selectedAdmin._id && data.message.userId === userId);
+
+        if (isRelevantToCurrentChat) {
+          setMessages(prev => {
+            const exists = prev.some(msg => msg._id === data.message._id);
+            if (exists) return prev;
+            return [...prev, data.message];
+          });
+        }
+      }
     };
+
+    const unsubscribe = addEventListener('new_message', handleNewMessage);
+
+    return () => unsubscribe();
   }, [addEventListener, selectedAdmin, userId]);
 
-  // Auto scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -80,12 +117,27 @@ const ChatWindow = ({ onClose }) => {
     if (!newMessage.trim() || !selectedAdmin) return;
 
     try {
-      await messageApi.sendMessage(selectedAdmin._id, newMessage);
+      console.log('Sending message to admin:', selectedAdmin._id);
+      const response = await messageApi.sendMessage(selectedAdmin._id, newMessage);
+      console.log('Send message response:', response);
+
+      if (response.statusCode === 201 && response.content && response.content.message) {
+        const newMsg = response.content.message;
+        console.log('Adding new message to state and context:', newMsg);
+
+        addMessage(newMsg);
+
+        setMessages(prev => [...prev, newMsg]);
+
+        notifyNewMessage(newMsg);
+      }
+
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
     }
   };
+
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -138,26 +190,34 @@ const ChatWindow = ({ onClose }) => {
             Bắt đầu trò chuyện với nhân viên tư vấn
           </div>
         ) : (
-          messages.map((msg) => (
-            <div
-              key={msg._id}
-              className={`flex ${msg.sender === 'user' ||
-                  (msg.sender._id && userId && msg.sender._id === userId)
-                  ? 'justify-end'
-                  : 'justify-start'
-                }`}
-            >
+          messages.map((msg) => {
+
+            if (!msg || typeof msg !== 'object') {
+              console.error('Invalid message format:', msg);
+              return null;
+            }
+
+            const isSentByMe = msg.sender === 'user';
+
+            return (
               <div
-                className={`max-w-[70%] p-3 rounded-lg ${msg.sender === 'user' ||
-                    (msg.sender._id && userId && msg.sender._id === userId)
-                    ? 'bg-blue-600 text-white rounded-br-none'
-                    : 'bg-gray-200 text-black rounded-bl-none'
-                  }`}
+                key={msg._id || msg.id}
+                className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'}`}
               >
-                {msg.content}
+                <div
+                  className={`max-w-[70%] p-3 rounded-lg ${isSentByMe
+                      ? 'bg-blue-600 text-white rounded-br-none'
+                      : 'bg-gray-200 text-black rounded-bl-none'
+                    }`}
+                >
+                  {msg.content}
+                  <div className={`text-xs mt-1 ${isSentByMe ? 'text-blue-200' : 'text-gray-500'}`}>
+                    {new Date(msg.createdAt).toLocaleTimeString()}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>

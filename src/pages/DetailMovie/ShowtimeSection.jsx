@@ -158,8 +158,8 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
         theaterName: selectedShowtime.theater?.name || ''
       };
 
-      const response = await bookingApi.createBooking(bookingData);
-      message.success('Đặt vé thành công!');
+      await bookingApi.createBooking(bookingData);
+      // message.success('Đặt vé thành công!');
 
       if (typeof onShowtimeSelect === 'function') {
         onShowtimeSelect(selectedShowtime._id, selectedSeats);
@@ -314,6 +314,7 @@ const ShowtimeSection = ({ showtimes, onShowtimeSelect }) => {
               editable={true}
               onSeatSelect={setSelectedSeats}
               showtimeDetails={selectedShowtime}
+              isLoading={seatsLoading}
             />
           </div>
         )}

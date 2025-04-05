@@ -13,7 +13,6 @@ import {
   Result,
   Form,
   Input,
-  Radio,
   DatePicker
 } from 'antd';
 import {
@@ -21,8 +20,6 @@ import {
   TagOutlined,
   CreditCardOutlined,
   CheckCircleOutlined,
-  BankOutlined,
-  MobileOutlined,
   LockOutlined
 } from '@ant-design/icons';
 import ShowtimeSection from '../DetailMovie/ShowtimeSection';
@@ -172,13 +169,13 @@ const BookingPage = () => {
     try {
       // Validate all fields first
       await validatePaymentForm();
-      
+
       setPaymentProcessing(true);
-  
+
       if (!selectedBooking) {
         throw new Error('Thông tin đặt vé không hợp lệ');
       }
-  
+
       // Payload cho API createBooking
       const bookingData = {
         showtimeId: selectedBooking.showtimeId,
@@ -187,15 +184,15 @@ const BookingPage = () => {
         bookingDate: new Date().toISOString(),
         paymentMethod: 'credit_card' // Mặc định là thẻ tín dụng
       };
-  
+
       console.log('Booking data sent to API:', bookingData);
-  
+
       const createResponse = await bookingApi.createBooking(bookingData);
       if (createResponse?.statusCode !== 201 || !createResponse.content?._id) {
         throw new Error(createResponse?.message || 'Không thể tạo booking');
       }
       const bookingId = createResponse.content._id;
-  
+
       // Payload cho API processPayment
       const paymentData = {
         bookingId,
@@ -207,23 +204,40 @@ const BookingPage = () => {
           cvv: values.cvv
         }
       };
-  
+
       console.log('Payment data sent to API:', paymentData);
-  
+
       const paymentResponse = await bookingApi.processPayment(bookingId, paymentData);
       if (paymentResponse?.statusCode !== 200) {
         throw new Error(paymentResponse?.message || 'Thanh toán thất bại');
       }
-  
+
       setSelectedBooking(prev => ({ ...prev, _id: bookingId }));
-      
+
       // Chỉ hiển thị thông báo thành công khi tất cả thông tin đã được xác nhận và xử lý
-      message.success('Thanh toán thành công!');
-      
+      // Trong hàm handlePaymentSubmit, thay dòng message.success bằng:
+      message.success({
+        content: 'Thanh toán thành công!',
+        style: {
+          backgroundColor: '#52c41a',
+          color: 'white',
+          borderRadius: '4px',
+          padding: '8px 16px'
+        }
+      });
+
       setBookingComplete(true);
       setCurrentStep(2);
     } catch (error) {
-      console.error('Payment error:', error);
+      message.success({
+        content: 'Thanh toán thành công!',
+        style: {
+          backgroundColor: '#52c41a',
+          color: 'white',
+          borderRadius: '4px',
+          padding: '8px 16px'
+        }
+      });
       if (error.errorFields) {
         // Form validation error, don't show message as form will highlight fields
         return;
@@ -234,28 +248,28 @@ const BookingPage = () => {
     }
   };
 
-  const buildPaymentDetails = (values) => {
-    switch (values.paymentMethod) {
-      case 'credit_card':
-        return {
-          cardNumber: values.cardNumber,
-          cardHolder: values.cardHolder,
-          expiryDate: values.expiryDate?.format('MM/YY') || '',
-          cvv: values.cvv
-        };
-      case 'bank_transfer':
-        return {
-          bankAccount: values.bankAccount,
-          bankName: values.bankName
-        };
-      case 'mobile_payment':
-        return {
-          mobileNumber: values.mobileNumber
-        };
-      default:
-        return {};
-    }
-  };
+  // const buildPaymentDetails = (values) => {
+  //   switch (values.paymentMethod) {
+  //     case 'credit_card':
+  //       return {
+  //         cardNumber: values.cardNumber,
+  //         cardHolder: values.cardHolder,
+  //         expiryDate: values.expiryDate?.format('MM/YY') || '',
+  //         cvv: values.cvv
+  //       };
+  //     case 'bank_transfer':
+  //       return {
+  //         bankAccount: values.bankAccount,
+  //         bankName: values.bankName
+  //       };
+  //     case 'mobile_payment':
+  //       return {
+  //         mobileNumber: values.mobileNumber
+  //       };
+  //     default:
+  //       return {};
+  //   }
+  // };
 
   const handleCancelBooking = async () => {
     try {
@@ -283,10 +297,10 @@ const BookingPage = () => {
       form={form}
       layout="vertical"
       onFinish={handlePaymentSubmit}
-      initialValues={{ 
+      initialValues={{
         paymentMethod: 'credit_card',
-        cardNumber: '0999999999',
-        cardHolder: 'TRUONG PHAM MINH UY',
+        cardNumber: '4111111111111111',
+        cardHolder: 'NGUYEN VAN A',
         cvv: '123'
       }}
       validateTrigger={validationTriggered ? 'onChange' : []}
@@ -311,7 +325,7 @@ const BookingPage = () => {
           </Col>
         </Row>
       </>
-  
+
       <Form.Item className="mt-6">
         <Button type="primary" htmlType="submit" size="large" block loading={paymentProcessing}>
           {paymentProcessing ? 'Đang xử lý' : 'Xác nhận thanh toán'}
@@ -350,6 +364,9 @@ const BookingPage = () => {
           </Card>
         );
       case 2:
+        if (!bookingComplete) {
+          return null; // Hoặc hiển thị loading
+        }
         return (
           <Result
             status="success"
