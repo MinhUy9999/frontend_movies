@@ -13,7 +13,6 @@ import {
   Result,
   Form,
   Input,
-  Radio,
   DatePicker
 } from 'antd';
 import {
@@ -21,8 +20,6 @@ import {
   TagOutlined,
   CreditCardOutlined,
   CheckCircleOutlined,
-  BankOutlined,
-  MobileOutlined,
   LockOutlined
 } from '@ant-design/icons';
 import ShowtimeSection from '../DetailMovie/ShowtimeSection';
@@ -44,6 +41,7 @@ const BookingPage = () => {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [bookingComplete, setBookingComplete] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [validationTriggered, setValidationTriggered] = useState(false);
 
   useEffect(() => {
     const fetchShowtimeAndSeats = async () => {
@@ -149,6 +147,8 @@ const BookingPage = () => {
         theaterName: showtimes.find(t => t.showtimes.some(s => s.id === selectedShowtimeId))?.theaterName || 'Không xác định'
       });
       setCurrentStep(1);
+      // Reset validation state when moving to payment step
+      setValidationTriggered(false);
     } catch (error) {
       console.error('Error processing showtime selection:', error);
       message.error(error.message || 'Đã xảy ra lỗi khi xử lý đặt vé');
@@ -160,8 +160,16 @@ const BookingPage = () => {
     return selectedSeats.reduce((total, seat) => total + (prices[seat.type] || 0), 0);
   };
 
+  const validatePaymentForm = () => {
+    setValidationTriggered(true);
+    return form.validateFields();
+  };
+
   const handlePaymentSubmit = async (values) => {
     try {
+      // Validate all fields first
+      await validatePaymentForm();
+
       setPaymentProcessing(true);
 
       if (!selectedBooking) {
@@ -174,9 +182,7 @@ const BookingPage = () => {
         seatIds: selectedBooking.seats.map(seat => seat.id),
         totalPrice: selectedBooking.totalPrice,
         bookingDate: new Date().toISOString(),
-        paymentMethod: values.paymentMethod // Thêm paymentMethod vào payload
-        // Nếu cần userId, thêm vào đây (lấy từ hệ thống xác thực)
-        // userId: "your-user-id-here"
+        paymentMethod: 'credit_card' // Mặc định là thẻ tín dụng
       };
 
       console.log('Booking data sent to API:', bookingData);
@@ -190,8 +196,13 @@ const BookingPage = () => {
       // Payload cho API processPayment
       const paymentData = {
         bookingId,
-        paymentMethod: values.paymentMethod,
-        paymentDetails: buildPaymentDetails(values)
+        paymentMethod: 'credit_card',
+        paymentDetails: {
+          cardNumber: values.cardNumber,
+          cardHolder: values.cardHolder,
+          expiryDate: values.expiryDate?.format('MM/YY') || '',
+          cvv: values.cvv
+        }
       };
 
       console.log('Payment data sent to API:', paymentData);
@@ -202,39 +213,63 @@ const BookingPage = () => {
       }
 
       setSelectedBooking(prev => ({ ...prev, _id: bookingId }));
-      message.success('Thanh toán thành công!');
+
+      // Chỉ hiển thị thông báo thành công khi tất cả thông tin đã được xác nhận và xử lý
+      // Trong hàm handlePaymentSubmit, thay dòng message.success bằng:
+      message.success({
+        content: 'Thanh toán thành công!',
+        style: {
+          backgroundColor: '#52c41a',
+          color: 'white',
+          borderRadius: '4px',
+          padding: '8px 16px'
+        }
+      });
+
       setBookingComplete(true);
       setCurrentStep(2);
     } catch (error) {
-      console.error('Payment error:', error);
+      message.success({
+        content: 'Thanh toán thành công!',
+        style: {
+          backgroundColor: '#52c41a',
+          color: 'white',
+          borderRadius: '4px',
+          padding: '8px 16px'
+        }
+      });
+      if (error.errorFields) {
+        // Form validation error, don't show message as form will highlight fields
+        return;
+      }
       message.error(error.message || 'Lỗi thanh toán. Vui lòng thử lại.');
     } finally {
       setPaymentProcessing(false);
     }
   };
 
-  const buildPaymentDetails = (values) => {
-    switch (values.paymentMethod) {
-      case 'credit_card':
-        return {
-          cardNumber: values.cardNumber,
-          cardHolder: values.cardHolder,
-          expiryDate: values.expiryDate?.format('MM/YY') || '',
-          cvv: values.cvv
-        };
-      case 'bank_transfer':
-        return {
-          bankAccount: values.bankAccount,
-          bankName: values.bankName
-        };
-      case 'mobile_payment':
-        return {
-          mobileNumber: values.mobileNumber
-        };
-      default:
-        return {};
-    }
-  };
+  // const buildPaymentDetails = (values) => {
+  //   switch (values.paymentMethod) {
+  //     case 'credit_card':
+  //       return {
+  //         cardNumber: values.cardNumber,
+  //         cardHolder: values.cardHolder,
+  //         expiryDate: values.expiryDate?.format('MM/YY') || '',
+  //         cvv: values.cvv
+  //       };
+  //     case 'bank_transfer':
+  //       return {
+  //         bankAccount: values.bankAccount,
+  //         bankName: values.bankName
+  //       };
+  //     case 'mobile_payment':
+  //       return {
+  //         mobileNumber: values.mobileNumber
+  //       };
+  //     default:
+  //       return {};
+  //   }
+  // };
 
   const handleCancelBooking = async () => {
     try {
@@ -247,6 +282,7 @@ const BookingPage = () => {
       }
       setSelectedBooking(null);
       setCurrentStep(0);
+      setValidationTriggered(false);
     } catch (error) {
       console.error('Error canceling booking:', error);
       message.error(error.message || 'Không thể hủy đặt vé');
@@ -261,64 +297,34 @@ const BookingPage = () => {
       form={form}
       layout="vertical"
       onFinish={handlePaymentSubmit}
-      initialValues={{ paymentMethod: 'credit_card' }}
+      initialValues={{
+        paymentMethod: 'credit_card',
+        cardNumber: '4111111111111111',
+        cardHolder: 'NGUYEN VAN A',
+        cvv: '123'
+      }}
+      validateTrigger={validationTriggered ? 'onChange' : []}
     >
-      <h3 className="text-lg font-medium mb-4">Chọn phương thức thanh toán</h3>
-      <Form.Item name="paymentMethod">
-        <Radio.Group className="w-full">
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={8}><Radio.Button value="credit_card"><CreditCardOutlined /> Thẻ tín dụng</Radio.Button></Col>
-            <Col xs={24} md={8}><Radio.Button value="bank_transfer"><BankOutlined /> Chuyển khoản</Radio.Button></Col>
-            <Col xs={24} md={8}><Radio.Button value="mobile_payment"><MobileOutlined /> Ví điện tử</Radio.Button></Col>
-          </Row>
-        </Radio.Group>
-      </Form.Item>
-
-      <Divider />
-
-      {form.getFieldValue('paymentMethod') === 'credit_card' && (
-        <>
-          <Form.Item name="cardNumber" label="Số thẻ" rules={[{ required: true, pattern: /^[0-9]{13,19}$/, message: 'Số thẻ không hợp lệ' }]}>
-            <Input prefix={<CreditCardOutlined />} placeholder="XXXX XXXX XXXX XXXX" />
-          </Form.Item>
-          <Form.Item name="cardHolder" label="Chủ thẻ" rules={[{ required: true, message: 'Vui lòng nhập tên chủ thẻ' }]}>
-            <Input placeholder="Tên in trên thẻ" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item name="expiryDate" label="Ngày hết hạn" rules={[{ required: true, message: 'Vui lòng chọn ngày' }]}>
-                <DatePicker picker="month" format="MM/YY" className="w-full" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item name="cvv" label="CVV" rules={[{ required: true, pattern: /^[0-9]{3,4}$/, message: 'CVV không hợp lệ' }]}>
-                <Input prefix={<LockOutlined />} placeholder="123" maxLength={4} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </>
-      )}
-
-      {form.getFieldValue('paymentMethod') === 'bank_transfer' && (
-        <>
-          <Form.Item name="bankName" label="Tên ngân hàng" rules={[{ required: true, message: 'Vui lòng chọn ngân hàng' }]}>
-            <Radio.Group>
-              <Radio.Button value="vietcombank">Vietcombank</Radio.Button>
-              <Radio.Button value="techcombank">Techcombank</Radio.Button>
-              <Radio.Button value="vietinbank">Vietinbank</Radio.Button>
-            </Radio.Group>
-          </Form.Item>
-          <Form.Item name="bankAccount" label="Số tài khoản" rules={[{ required: true, pattern: /^[0-9]{10,14}$/, message: 'Số tài khoản không hợp lệ' }]}>
-            <Input prefix={<BankOutlined />} placeholder="Số tài khoản" />
-          </Form.Item>
-        </>
-      )}
-
-      {form.getFieldValue('paymentMethod') === 'mobile_payment' && (
-        <Form.Item name="mobileNumber" label="Số điện thoại" rules={[{ required: true, pattern: /^(0|84|\+84)[3|5|7|8|9][0-9]{8}$/, message: 'Số điện thoại không hợpException lệ' }]}>
-          <Input prefix={<MobileOutlined />} placeholder="Số điện thoại" />
+      <>
+        <Form.Item name="cardNumber" label="Số thẻ" rules={[{ required: true, pattern: /^[0-9]{13,19}$/, message: 'Số thẻ không hợp lệ' }]}>
+          <Input prefix={<CreditCardOutlined />} placeholder="XXXX XXXX XXXX XXXX" />
         </Form.Item>
-      )}
+        <Form.Item name="cardHolder" label="Chủ thẻ" rules={[{ required: true, message: 'Vui lòng nhập tên chủ thẻ' }]}>
+          <Input placeholder="Tên in trên thẻ" />
+        </Form.Item>
+        <Row gutter={16}>
+          <Col xs={24} md={12}>
+            <Form.Item name="expiryDate" label="Ngày hết hạn" rules={[{ required: true, message: 'Vui lòng chọn ngày' }]}>
+              <DatePicker picker="month" format="MM/YY" className="w-full" />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={12}>
+            <Form.Item name="cvv" label="CVV" rules={[{ required: true, pattern: /^[0-9]{3,4}$/, message: 'CVV không hợp lệ' }]}>
+              <Input prefix={<LockOutlined />} placeholder="123" maxLength={4} />
+            </Form.Item>
+          </Col>
+        </Row>
+      </>
 
       <Form.Item className="mt-6">
         <Button type="primary" htmlType="submit" size="large" block loading={paymentProcessing}>
@@ -358,6 +364,9 @@ const BookingPage = () => {
           </Card>
         );
       case 2:
+        if (!bookingComplete) {
+          return null; // Hoặc hiển thị loading
+        }
         return (
           <Result
             status="success"

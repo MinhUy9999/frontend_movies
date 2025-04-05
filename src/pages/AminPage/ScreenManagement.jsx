@@ -172,9 +172,24 @@ const ScreenManagement = () => {
             title: "Rạp chiếu",
             dataIndex: "theaterId",
             key: "theaterId",
-            render: (theaterId) => {
-                const theater = theaters.find((t) => t._id === theaterId);
-                return theater ? theater.name : "N/A";
+            render: (theaterId, record) => {
+                // Trường hợp 1: Nếu theaterId là đối tượng (đã được populate)
+                if (theaterId && typeof theaterId === 'object' && theaterId.name) {
+                    return theaterId.name;
+                }
+
+                // Trường hợp 2: Nếu theaterId là string ID
+                if (theaterId && typeof theaterId === 'string') {
+                    const theater = theaters.find((t) => t._id === theaterId);
+                    return theater ? theater.name : "N/A";
+                }
+
+                // Trường hợp 3: Kiểm tra nếu có field theater trong record
+                if (record.theater && record.theater.name) {
+                    return record.theater.name;
+                }
+
+                return "N/A";
             },
         },
         {

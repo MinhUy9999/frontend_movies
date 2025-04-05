@@ -12,18 +12,26 @@ const ChatWindow = ({ onClose }) => {
   const [admins, setAdmins] = useState([]);
   const [selectedAdmin, setSelectedAdmin] = useState(null);
   const messagesEndRef = useRef(null);
+<<<<<<< HEAD
   
   const { 
     addEventListener,
     isConnected, 
     addMessage, 
     getConversationMessages, 
+=======
+
+  const {
+    isConnected,
+    addMessage,
+    getConversationMessages,
+>>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
     markConversationAsRead,
-    notifyNewMessage 
+    notifyNewMessage
   } = useWebSocket();
-  
+
   const user = useSelector((state) => state.user) || {};
-  const userId = user.id || localStorage.getItem('userId'); 
+  const userId = user.id || localStorage.getItem('userId');
 
   useEffect(() => {
     const fetchAdmins = async () => {
@@ -31,7 +39,7 @@ const ChatWindow = ({ onClose }) => {
         const response = await messageApi.getAvailableAdmins();
         if (response.statusCode === 200 && response.content && response.content.admins) {
           setAdmins(response.content.admins);
-          
+
           if (response.content.admins.length > 0) {
             setSelectedAdmin(response.content.admins[0]);
           }
@@ -42,7 +50,7 @@ const ChatWindow = ({ onClose }) => {
         setLoading(false);
       }
     };
-    
+
     fetchAdmins();
   }, []);
 
@@ -58,7 +66,7 @@ const ChatWindow = ({ onClose }) => {
           console.error('Error fetching conversation:', error);
         }
       };
-      
+
       fetchConversation();
     }
   }, [selectedAdmin]);
@@ -70,28 +78,29 @@ const ChatWindow = ({ onClose }) => {
           const response = await messageApi.getConversation(selectedAdmin._id);
           if (response.statusCode === 200 && response.content && response.content.messages) {
             response.content.messages.forEach(msg => addMessage(msg));
-            
+
             const conversationMessages = getConversationMessages(userId, selectedAdmin._id);
             setMessages(conversationMessages);
-            
+
             markConversationAsRead(userId, selectedAdmin._id, 'user');
           }
         } catch (error) {
           console.error('Error fetching conversation:', error);
         }
       };
-      
+
       fetchConversation();
     }
   }, [selectedAdmin, userId, addMessage, getConversationMessages, markConversationAsRead]);
 
   useEffect(() => {
     if (!selectedAdmin || !userId) return;
-    
+
     const handleNewMessage = (data) => {
       console.log('WebSocket new_message received in ChatWindow:', data);
       
       if (data.message) {
+<<<<<<< HEAD
         const msg = data.message;
         const isForCurrentChat = 
           (msg.userId === userId && msg.adminId === selectedAdmin._id) || 
@@ -100,6 +109,13 @@ const ChatWindow = ({ onClose }) => {
         console.log('Message is for current chat:', isForCurrentChat);
         
         if (isForCurrentChat) {
+=======
+        const isRelevantToCurrentChat =
+          (data.message.userId === userId && data.message.adminId === selectedAdmin._id) ||
+          (data.message.adminId === selectedAdmin._id && data.message.userId === userId);
+
+        if (isRelevantToCurrentChat) {
+>>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
           setMessages(prev => {
             const exists = prev.some(m => m._id === msg._id);
             if (exists) return prev;
@@ -108,10 +124,14 @@ const ChatWindow = ({ onClose }) => {
         }
       }
     };
+<<<<<<< HEAD
   
     console.log('Adding new_message listener in ChatWindow');
+=======
+
+>>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
     const unsubscribe = addEventListener('new_message', handleNewMessage);
-    
+
     return () => unsubscribe();
   }, [addEventListener, selectedAdmin, userId]);
 
@@ -121,7 +141,7 @@ const ChatWindow = ({ onClose }) => {
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedAdmin) return;
-    
+
     try {
       console.log('Sending message to admin:', selectedAdmin._id);
       
@@ -148,9 +168,10 @@ const ChatWindow = ({ onClose }) => {
       // Send to server
       const response = await messageApi.sendMessage(selectedAdmin._id, messageToSend);
       console.log('Send message response:', response);
-      
+
       if (response.statusCode === 201 && response.content && response.content.message) {
         const newMsg = response.content.message;
+<<<<<<< HEAD
         
         // Replace temp message with real one from server
         setMessages(prev => prev.map(msg => 
@@ -161,6 +182,14 @@ const ChatWindow = ({ onClose }) => {
         addMessage(newMsg);
         
         // Notify other clients via WebSocket
+=======
+        console.log('Adding new message to state and context:', newMsg);
+
+        addMessage(newMsg);
+
+        setMessages(prev => [...prev, newMsg]);
+
+>>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
         notifyNewMessage(newMsg);
       } else {
         console.error('Error response from sendMessage:', response);
@@ -168,6 +197,11 @@ const ChatWindow = ({ onClose }) => {
         setMessages(prev => prev.filter(msg => msg._id !== tempId));
         message.error('Failed to send message');
       }
+<<<<<<< HEAD
+=======
+
+      setNewMessage('');
+>>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
     } catch (error) {
       console.error('Error sending message:', error);
       message.error('Error sending message. Please try again.');
@@ -193,11 +227,11 @@ const ChatWindow = ({ onClose }) => {
           <X size={20} />
         </button>
       </div>
-      
+
       {/* Admin Selection */}
       {admins.length > 0 && (
         <div className="p-2 border-b">
-          <select 
+          <select
             className="w-full p-2 border rounded"
             value={selectedAdmin?._id || ''}
             onChange={(e) => {
@@ -213,7 +247,7 @@ const ChatWindow = ({ onClose }) => {
           </select>
         </div>
       )}
-      
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50">
         {loading ? (
@@ -226,25 +260,24 @@ const ChatWindow = ({ onClose }) => {
           </div>
         ) : (
           messages.map((msg) => {
-            
+
             if (!msg || typeof msg !== 'object') {
               console.error('Invalid message format:', msg);
               return null;
             }
-            
+
             const isSentByMe = msg.sender === 'user';
-            
+
             return (
-              <div 
-                key={msg._id || msg.id} 
+              <div
+                key={msg._id || msg.id}
                 className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'}`}
               >
-                <div 
-                  className={`max-w-[70%] p-3 rounded-lg ${
-                    isSentByMe
+                <div
+                  className={`max-w-[70%] p-3 rounded-lg ${isSentByMe
                       ? 'bg-blue-600 text-white rounded-br-none'
                       : 'bg-gray-200 text-black rounded-bl-none'
-                  }`}
+                    }`}
                 >
                   {msg.content}
                   <div className={`text-xs mt-1 ${isSentByMe ? 'text-blue-200' : 'text-gray-500'}`}>
@@ -257,7 +290,7 @@ const ChatWindow = ({ onClose }) => {
         )}
         <div ref={messagesEndRef} />
       </div>
-      
+
       {/* Message Input */}
       <div className="p-3 border-t flex">
         <input
