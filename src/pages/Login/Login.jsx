@@ -15,27 +15,37 @@ const Login = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setMessage("");
-
+    
         const credentials = { email, password };
         const response = await userApi.login(credentials);
         console.log("Login response:", response);
-
+    
         if (response.statusCode === 200) {
             const { accessToken, user } = response.content;
             if (user && user.username && user.role) {
-                // Lưu accessToken và user info vào localStorage
+                const tokenPayload = JSON.parse(atob(accessToken.split('.')[1]));
+                const userId = tokenPayload.id;
+                
                 localStorage.setItem("accessToken", accessToken);
-                localStorage.setItem("user", JSON.stringify({ username: user.username, role: user.role }));
-
-                // Dispatch action để cập nhật Redux store
-                dispatch(loginSuccess({ username: user.username, role: user.role }));
+                localStorage.setItem("userId", userId); 
+                localStorage.setItem("userRole", user.role);
+                localStorage.setItem("user", JSON.stringify({ 
+                    username: user.username, 
+                    role: user.role,
+                    id: userId 
+                }));
+        
+                dispatch(loginSuccess({ 
+                    username: user.username, 
+                    role: user.role,
+                    id: userId
+                }));
+                
                 setMessage(`Login successful! Welcome, ${user.username}`);
                 setTimeout(() => navigate("/"), 2000);
             } else {
                 setMessage("Login successful, but user data is incomplete.");
             }
-        } else {
-            setMessage(response.message || "Login failed.");
         }
     };
 

@@ -22,7 +22,8 @@ const ChatWindow = ({ onClose }) => {
   } = useSocket();
 
   const user = useSelector((state) => state.user) || {};
-  const userId = user.id || localStorage.getItem('userId');
+const userId = user.id || localStorage.getItem('userId') || 
+              (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null);
 
   const messages = selectedAdmin ? 
     getConversationMessages(userId, selectedAdmin._id) : [];
@@ -32,24 +33,34 @@ const ChatWindow = ({ onClose }) => {
         try {
           console.log('Redux User Role:', userRole);
           console.log('LocalStorage User Role:', localStorage.getItem('userRole'));
-  
-          if (userRole !== 'user') {
+    
+          const effectiveRole = userRole || localStorage.getItem('userRole');
+          
+          if (effectiveRole !== 'user') {
             console.error('Access Denied: Not a user role');
             setLoading(false);
             return;
           }
-  
+    
           const response = await messageApi.getAvailableAdmins();
+           
           console.log('Available Admins Full Response:', response);
+          console.log('Response content structure:', response.content);
           
-          if (response.statusCode === 200 && 
-              response.content && 
-              response.content.admins && 
-              response.content.admins.length > 0) {
-            console.log('Admins found:', response.content.admins);
-            setAdmins(response.content.admins);
+          if (response.statusCode === 200 && response.content) {
+            if (response.content.admins && response.content.admins.length > 0) {
+              console.log('Admins found:', response.content.admins);
+              setAdmins(response.content.admins);
+            }
+            else if (Array.isArray(response.content)) {
+              console.log('Admins found in content array:', response.content);
+              setAdmins(response.content);
+            }
+            else {
+              console.warn('No admins found in response');
+            }
           } else {
-            console.warn('No admins found or invalid response');
+            console.warn('No valid response from admin API');
           }
           setLoading(false);
         } catch (error) {
@@ -57,7 +68,7 @@ const ChatWindow = ({ onClose }) => {
           setLoading(false);
         }
       };
-  
+    
       fetchAdmins();
     }, [userRole]);
 
