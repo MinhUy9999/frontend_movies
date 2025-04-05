@@ -25,7 +25,6 @@ class WebSocketService {
   async connect() {
     try {
       let wsToken;
-
       try {
         const response = await userApi.getWebSocketToken();
         if (
@@ -36,27 +35,24 @@ class WebSocketService {
           wsToken = response.content.wsToken;
         } else {
           console.warn("WebSocket token response invalid:", response);
-          if (import.meta.env.DEV) {
-            console.log(
-              "Using mock WebSocket functionality in development mode"
-            );
-            return this.setupMockWebSocket();
-          }
-          return false;
+          return this.setupMockWebSocket();
         }
       } catch (error) {
         console.warn("Error getting WebSocket token:", error);
-        if (import.meta.env.DEV) {
-          console.log("Using mock WebSocket functionality in development mode");
-          return this.setupMockWebSocket();
-        }
-        return false;
+        return this.setupMockWebSocket();
       }
 
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host =
-        import.meta.env.VITE_WS_URL || `${window.location.hostname}:5000`;
-      const wsUrl = `${protocol}//${host}/ws?token=${wsToken}`;
+      let wsUrl;
+      const backendUrl =
+        import.meta.env.VITE_API_URL || "http://localhost:10000/api";
+
+      const baseUrl = backendUrl.replace(/\/api$/, "");
+
+      const wsProtocol = baseUrl.startsWith("https") ? "wss://" : "ws://";
+
+      const hostPortion = baseUrl.replace(/^https?:\/\//, "");
+
+      wsUrl = `${wsProtocol}${hostPortion}/ws?token=${wsToken}`;
 
       try {
         this.socket = new WebSocket(wsUrl);
@@ -74,9 +70,6 @@ class WebSocketService {
             "error",
             () => {
               if (import.meta.env.DEV) {
-                console.log(
-                  "Real WebSocket connection failed. Using mock in development mode"
-                );
                 resolve(this.setupMockWebSocket());
               } else {
                 reject(new Error("WebSocket connection failed"));
@@ -88,9 +81,6 @@ class WebSocketService {
           setTimeout(() => {
             if (this.socket.readyState !== WebSocket.OPEN) {
               if (import.meta.env.DEV) {
-                console.log(
-                  "WebSocket connection timeout. Using mock in development mode"
-                );
                 resolve(this.setupMockWebSocket());
               } else {
                 reject(new Error("WebSocket connection timeout"));
@@ -113,8 +103,6 @@ class WebSocketService {
   }
 
   setupMockWebSocket() {
-    console.log("Setting up mock WebSocket for development");
-
     this.socket = {
       readyState: WebSocket.OPEN,
       send: (data) => {
@@ -135,7 +123,6 @@ class WebSocketService {
         }
       },
       close: () => {
-        console.log("Mock WebSocket closed");
         this.socket = null;
       },
     };
@@ -187,16 +174,22 @@ class WebSocketService {
   handleMessage(event) {
     try {
       const data = JSON.parse(event.data);
-      console.log("WebSocket message received:", data);
+      console.log("Raw WebSocket message received:", data);
 
-      if (data.type && this.listeners.has(data.type)) {
-        const callbacks = this.listeners.get(data.type);
-        callbacks.forEach((callback) => callback(data));
+      if (data.type === "new_message") {
+        console.log("Chat message received via WebSocket:", data.message);
       }
 
+      // Immediately dispatch to listeners (with a small setTimeout to break call stack)
+      if (data.type && this.listeners.has(data.type)) {
+        const callbacks = this.listeners.get(data.type);
+        callbacks.forEach((callback) => setTimeout(() => callback(data), 0));
+      }
+
+      // Also dispatch to wildcard listeners
       if (this.listeners.has("*")) {
         const callbacks = this.listeners.get("*");
-        callbacks.forEach((callback) => callback(data));
+        callbacks.forEach((callback) => setTimeout(() => callback(data), 0));
       }
     } catch (error) {
       console.error("Error parsing WebSocket message:", error);
@@ -204,7 +197,6 @@ class WebSocketService {
   }
 
   handleClose(event) {
-    console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
     clearInterval(this.pingInterval);
 
     if (
@@ -212,9 +204,6 @@ class WebSocketService {
       this.reconnectAttempts < this.maxReconnectAttempts
     ) {
       this.reconnectAttempts++;
-      console.log(
-        `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
-      );
 
       setTimeout(() => {
         this.connect();

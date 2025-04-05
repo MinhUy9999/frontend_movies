@@ -12,19 +12,16 @@ const apiSeats = {
         }
     },
 
-    // Lấy ghế theo ID suất chiếu (public - không cần xác thực)
     getSeatsByShowtime: async (showtimeId) => {
         try {
             const response = await api.get(`/seats/showtime/${showtimeId}`);
-            console.log('API response:', response.data); // Debug dữ liệu trả về
             return response.data;
         } catch (error) {
-            console.error('API error:', error.response || error.message); // Debug lỗi
+            console.error('API error:', error.response || error.message); 
             throw new Error(error.response?.data?.message || "Lỗi khi lấy ghế theo suất chiếu");
         }
     },
 
-    // Lấy thông tin một ghế theo ID (public - không cần xác thực)
     getSeatById: async (seatId) => {
         try {
             const response = await api.get(`/seats/${seatId}`);
