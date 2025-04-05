@@ -7,7 +7,7 @@ import "./index.css";
 import router from "./routes/router";
 import "antd/dist/reset.css";
 import { loginSuccess } from "./store/userSlice";
-import { WebSocketProvider } from "./contexts/WebSocketContext";
+import { SocketProvider } from "./contexts/WebSocketContext";
 
 const userFromStorage = localStorage.getItem("user");
 if (userFromStorage) {
@@ -18,9 +18,9 @@ if (userFromStorage) {
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <Provider store={store}>
-      <WebSocketProvider>
+      <SocketProvider>
         <RouterProvider router={router} />
-      </WebSocketProvider>
+      </SocketProvider>
     </Provider>
   </React.StrictMode>
 );
