@@ -22,7 +22,7 @@ const ChatWindow = ({ onClose }) => {
   } = useSocket();
 
   const user = useSelector((state) => state.user) || {};
-const userId = user.id || localStorage.getItem('userId') || 
+  const userId = user.id || localStorage.getItem('userId') || 
               (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null);
 
   const messages = selectedAdmin ? 
@@ -31,29 +31,21 @@ const userId = user.id || localStorage.getItem('userId') ||
     useEffect(() => {
       const fetchAdmins = async () => {
         try {
-          console.log('Redux User Role:', userRole);
-          console.log('LocalStorage User Role:', localStorage.getItem('userRole'));
     
           const effectiveRole = userRole || localStorage.getItem('userRole');
           
           if (effectiveRole !== 'user') {
-            console.error('Access Denied: Not a user role');
             setLoading(false);
             return;
           }
     
           const response = await messageApi.getAvailableAdmins();
-           
-          console.log('Available Admins Full Response:', response);
-          console.log('Response content structure:', response.content);
           
           if (response.statusCode === 200 && response.content) {
             if (response.content.admins && response.content.admins.length > 0) {
-              console.log('Admins found:', response.content.admins);
               setAdmins(response.content.admins);
             }
             else if (Array.isArray(response.content)) {
-              console.log('Admins found in content array:', response.content);
               setAdmins(response.content);
             }
             else {
@@ -81,10 +73,8 @@ const userId = user.id || localStorage.getItem('userId') ||
           
           if (response.statusCode === 200 && response.content) {
             if (response.content.messages) {
-              // Add messages to global context
               response.content.messages.forEach(msg => addMessage(msg));
               
-              // Mark conversation as read
               markConversationAsRead(userId, selectedAdmin._id, 'user');
             }
           }
@@ -100,7 +90,6 @@ const userId = user.id || localStorage.getItem('userId') ||
   }, [selectedAdmin, userId, addMessage, markConversationAsRead]);
 
   useEffect(() => {
-    // Listen for new messages
     const unsubscribe = addEventListener('new_message', (data) => {
       console.log('Socket.IO new_message received in ChatWindow:', data);
       
@@ -128,7 +117,6 @@ const userId = user.id || localStorage.getItem('userId') ||
     if (!newMessage.trim() || !selectedAdmin) return;
 
     try {
-      // Create a temporary message for optimistic UI update
       const tempId = `temp-${Date.now()}`;
       const tempMsg = {
         _id: tempId,
@@ -141,19 +129,14 @@ const userId = user.id || localStorage.getItem('userId') ||
         isTemporary: true
       };
       
-      // Add to context (will appear in UI immediately)
       addMessage(tempMsg);
       
-      // Clear input before sending
       const messageToSend = newMessage;
       setNewMessage('');
       
-      // Send message via socket
       sendMessage(selectedAdmin._id, messageToSend, (response) => {
-        console.log('Send message response:', response);
         
         if (!response || !response.success) {
-          // Show error and handle failure
           console.error('Failed to send message:', response);
           alert('Failed to send message. Please try again.');
         }
