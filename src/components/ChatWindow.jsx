@@ -1,12 +1,11 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { X, Send } from 'lucide-react';
-import { useWebSocket } from '../contexts/WebSocketContext';
+import { useSocket } from '../contexts/WebSocketContext';
 import messageApi from '../apis/messageApi';
 
 const ChatWindow = ({ onClose }) => {
-  const [messages, setMessages] = useState([]);
+  const userRole = useSelector(state => state.user.role);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [admins, setAdmins] = useState([]);
@@ -14,103 +13,101 @@ const ChatWindow = ({ onClose }) => {
   const messagesEndRef = useRef(null);
   
   const { 
-    addEventListener,
     isConnected, 
     addMessage, 
     getConversationMessages, 
-
+    sendMessage,
     markConversationAsRead,
-    notifyNewMessage
-  } = useWebSocket();
+    addEventListener
+  } = useSocket();
 
   const user = useSelector((state) => state.user) || {};
-  const userId = user.id || localStorage.getItem('userId');
+  const userId = user.id || localStorage.getItem('userId') || 
+              (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null);
 
-  useEffect(() => {
-    const fetchAdmins = async () => {
-      try {
-        const response = await messageApi.getAvailableAdmins();
-        if (response.statusCode === 200 && response.content && response.content.admins) {
-          setAdmins(response.content.admins);
 
-          if (response.content.admins.length > 0) {
-            setSelectedAdmin(response.content.admins[0]);
-          }
-        }
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching admins:', error);
-        setLoading(false);
-      }
-    };
+  const messages = selectedAdmin ? 
+    getConversationMessages(userId, selectedAdmin._id) : [];
 
-    fetchAdmins();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAdmin) {
-      const fetchConversation = async () => {
+    useEffect(() => {
+      const fetchAdmins = async () => {
         try {
-          const response = await messageApi.getConversation(selectedAdmin._id);
-          if (response.statusCode === 200 && response.content && response.content.messages) {
-            setMessages(response.content.messages);
+          const effectiveRole = userRole || localStorage.getItem('userRole');
+          
+          if (effectiveRole !== 'user') {
+            setLoading(false);
+            return;
           }
+    
+          const response = await messageApi.getAvailableAdmins();
+          
+          if (response.statusCode === 200 && response.content) {
+            let adminsList = [];
+            
+            if (response.content.admins && response.content.admins.length > 0) {
+              adminsList = response.content.admins;
+            } else if (Array.isArray(response.content)) {
+              adminsList = response.content;
+            }
+            
+            setAdmins(adminsList);
+            
+            // Tự động chọn admin đầu tiên nếu có
+            if (adminsList.length > 0 && !selectedAdmin) {
+              setSelectedAdmin(adminsList[0]);
+            }
+          }
+          setLoading(false);
         } catch (error) {
-          console.error('Error fetching conversation:', error);
+          console.error('Error fetching admins:', error);
+          setLoading(false);
         }
       };
-
-      fetchConversation();
-    }
-  }, [selectedAdmin]);
+    
+      fetchAdmins();
+    }, [userRole, selectedAdmin]);
 
   useEffect(() => {
     if (selectedAdmin && userId) {
       const fetchConversation = async () => {
         try {
+          setLoading(true);
           const response = await messageApi.getConversation(selectedAdmin._id);
-          if (response.statusCode === 200 && response.content && response.content.messages) {
-            response.content.messages.forEach(msg => addMessage(msg));
-
-            const conversationMessages = getConversationMessages(userId, selectedAdmin._id);
-            setMessages(conversationMessages);
-
-            markConversationAsRead(userId, selectedAdmin._id, 'user');
+          
+          if (response.statusCode === 200 && response.content) {
+            if (response.content.messages) {
+              response.content.messages.forEach(msg => addMessage(msg));
+              
+              markConversationAsRead(userId, selectedAdmin._id, 'user');
+            }
           }
+          setLoading(false);
         } catch (error) {
           console.error('Error fetching conversation:', error);
+          setLoading(false);
         }
       };
 
       fetchConversation();
     }
-  }, [selectedAdmin, userId, addMessage, getConversationMessages, markConversationAsRead]);
+  }, [selectedAdmin, userId, addMessage, markConversationAsRead]);
 
   useEffect(() => {
-    if (!selectedAdmin || !userId) return;
-
-    const handleNewMessage = (data) => {
-      console.log('WebSocket new_message received in ChatWindow:', data);
+    const unsubscribe = addEventListener('new_message', (data) => {
+      console.log('Socket.IO new_message received in ChatWindow:', data);
       
-      if (data.message) {
-        const msg = data.message;
+      if (data.message && selectedAdmin) {
         const isForCurrentChat = 
-          (msg.userId === userId && msg.adminId === selectedAdmin._id) || 
-          (msg.adminId === userId && msg.userId === selectedAdmin._id);
-        
-        console.log('Message is for current chat:', isForCurrentChat);
+          (data.message.userId === userId && data.message.adminId === selectedAdmin._id) || 
+          (data.message.adminId === userId && data.message.userId === selectedAdmin._id);
         
         if (isForCurrentChat) {
-          setMessages(prev => {
-            const exists = prev.some(m => m._id === msg._id);
-            if (exists) return prev;
-            return [...prev, msg];
-          });
+          if (data.message.sender === 'admin') {
+            markAsRead(data.message._id);
+          }
         }
       }
-    };
-    console.log('Adding new_message listener in ChatWindow');
-    const unsubscribe = addEventListener('new_message', handleNewMessage);
+    });
 
     return () => unsubscribe();
   }, [addEventListener, selectedAdmin, userId]);
@@ -121,11 +118,8 @@ const ChatWindow = ({ onClose }) => {
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedAdmin) return;
-
+  
     try {
-      console.log('Sending message to admin:', selectedAdmin._id);
-      
-      // Create a temporary message for optimistic UI update
       const tempId = `temp-${Date.now()}`;
       const tempMsg = {
         _id: tempId,
@@ -138,39 +132,48 @@ const ChatWindow = ({ onClose }) => {
         isTemporary: true
       };
       
-      // Update UI immediately
-      setMessages(prev => [...prev, tempMsg]);
+      addMessage(tempMsg);
       
-      // Clear input before the API call
       const messageToSend = newMessage;
       setNewMessage('');
       
-      // Send to server
-      const response = await messageApi.sendMessage(selectedAdmin._id, messageToSend);
-      console.log('Send message response:', response);
-
-      if (response.statusCode === 201 && response.content && response.content.message) {
-        const newMsg = response.content.message;
+      const conversationResponse = await messageApi.getOrCreateConversation(selectedAdmin._id);
+      
+      if (conversationResponse.statusCode === 200 || conversationResponse.statusCode === 201) {
+        const conversationId = conversationResponse.content.conversation._id;
         
-        // Replace temp message with real one from server
-        setMessages(prev => prev.map(msg => 
-          msg._id === tempId ? newMsg : msg
-        ));
+        const socketSent = sendMessage(selectedAdmin._id, messageToSend, (response) => {
+          if (!response || response.success === false) {
+            console.log('WebSocket message failed, trying API...');
+            
+            messageApi.sendMessage(conversationId, messageToSend)
+              .then(apiResponse => {
+                console.log('API message response:', apiResponse);
+              })
+              .catch(err => {
+                console.error('Failed to send message via API:', err);
+                alert('Không thể gửi tin nhắn. Vui lòng thử lại.');
+              });
+          }
+        });
         
-        // Add to global message store in WebSocketContext
-        addMessage(newMsg);
-        
-        // Notify other clients via WebSocket
-        notifyNewMessage(newMsg);
+        if (!socketSent || !isConnected) {
+          console.log('WebSocket not available, using API...');
+          try {
+            const apiResponse = await messageApi.sendMessage(conversationId, messageToSend);
+            console.log('API message response:', apiResponse);
+          } catch (err) {
+            console.error('Failed to send message via API:', err);
+            alert('Không thể gửi tin nhắn. Vui lòng thử lại.');
+          }
+        }
       } else {
-        console.error('Error response from sendMessage:', response);
-        // Show error and remove temp message
-        setMessages(prev => prev.filter(msg => msg._id !== tempId));
-        message.error('Failed to send message');
+        console.error('Could not get conversation with admin');
+        alert('Không thể tạo cuộc trò chuyện với admin. Vui lòng thử lại.');
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      message.error('Error sending message. Please try again.');
+      alert('Lỗi khi gửi tin nhắn. Vui lòng thử lại.');
     }
   };
 
@@ -226,17 +229,11 @@ const ChatWindow = ({ onClose }) => {
           </div>
         ) : (
           messages.map((msg) => {
-
-            if (!msg || typeof msg !== 'object') {
-              console.error('Invalid message format:', msg);
-              return null;
-            }
-
             const isSentByMe = msg.sender === 'user';
 
             return (
               <div
-                key={msg._id || msg.id}
+                key={msg._id}
                 className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'}`}
               >
                 <div
@@ -248,6 +245,7 @@ const ChatWindow = ({ onClose }) => {
                   {msg.content}
                   <div className={`text-xs mt-1 ${isSentByMe ? 'text-blue-200' : 'text-gray-500'}`}>
                     {new Date(msg.createdAt).toLocaleTimeString()}
+                    {msg.isRead && isSentByMe && <span className="ml-1">✓</span>}
                   </div>
                 </div>
               </div>

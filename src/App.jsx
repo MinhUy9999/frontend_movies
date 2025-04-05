@@ -2,11 +2,11 @@ import { Outlet } from "react-router-dom";
 import Header from "./components/Header";
 import Banner from "./components/Banner";
 import WebSocketNotification from "./components/WebSocketNotification";
-import { useWebSocket } from "./contexts/WebSocketContext";
+import { useSocket } from "./contexts/WebSocketContext";
 import ChatIcon from "./components/ChatIcon"; 
 
 function App() {
-  const { isConnected } = useWebSocket();
+  const { isConnected } = useSocket();
   
   return (
     <div>
