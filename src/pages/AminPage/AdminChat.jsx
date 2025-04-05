@@ -16,6 +16,7 @@ const AdminChat = () => {
   const userId = user.id || localStorage.getItem('userId');
   
   const { 
+    addEventListener,
     isConnected, 
     addMessage, 
     getConversationMessages, 
@@ -79,24 +80,35 @@ const AdminChat = () => {
     
     const handleNewMessage = (data) => {
       console.log('WebSocket new_message received in AdminChat:', data);
+      
       if (data.message) {
+        console.log('Current conversation:', activeUser._id, userId);
+        console.log('Message participants:', data.message.userId, data.message.adminId);
+        
         const isRelevantMessage = 
           (data.message.userId === activeUser._id && data.message.adminId === userId) ||
           (data.message.adminId === userId && data.message.userId === activeUser._id);
         
+        console.log('Is relevant to active conversation?', isRelevantMessage);
+        
         if (isRelevantMessage) {
           setMessages(prev => {
-            const exists = prev.some(msg => msg._id === data.message._id);
-            if (exists) return prev;
+            console.log('Adding new message to admin UI');
+            const msgExists = prev.some(msg => msg._id === data.message._id);
+            if (msgExists) return prev;
             return [...prev, data.message];
           });
         }
       }
     };
     
+    console.log('Setting up new_message listener in AdminChat');
     const unsubscribe = addEventListener('new_message', handleNewMessage);
     
-    return () => unsubscribe();
+    return () => {
+      console.log('Removing new_message listener in AdminChat');
+      unsubscribe();
+    };
   }, [addEventListener, activeUser, userId]);
 
   useEffect(() => {
@@ -108,25 +120,53 @@ const AdminChat = () => {
     
     try {
       console.log('Sending message to user:', activeUser._id);
-      const response = await messageApi.sendMessage(activeUser._id, newMessage);
+      
+      // Create temporary message for optimistic UI update
+      const tempId = `temp-${Date.now()}`;
+      const tempMsg = {
+        _id: tempId,
+        content: newMessage,
+        sender: 'admin',
+        createdAt: new Date().toISOString(),
+        userId: activeUser._id,
+        adminId: userId,
+        isRead: false,
+        isTemporary: true
+      };
+      
+      // Update UI immediately
+      setMessages(prev => [...prev, tempMsg]);
+      
+      // Clear input before API call
+      const messageToSend = newMessage;
+      setNewMessage('');
+      
+      // Send to server
+      const response = await messageApi.sendMessage(activeUser._id, messageToSend);
       console.log('Send message response:', response);
       
       if (response.statusCode === 201 && response.content && response.content.message) {
         const newMsg = response.content.message;
-        console.log('Adding new message to state and context:', newMsg);
         
+        // Replace temp message with real message from server
+        setMessages(prev => prev.map(msg => 
+          msg._id === tempId ? newMsg : msg
+        ));
+        
+        // Add to global message store
         addMessage(newMsg);
         
-        setMessages(prev => [...prev, newMsg]);
-        
+        // Notify other clients via WebSocket
         notifyNewMessage(newMsg);
       } else {
         console.error('Error response from sendMessage:', response);
+        // Remove temp message on error
+        setMessages(prev => prev.filter(msg => msg._id !== tempId));
+        message.error('Failed to send message');
       }
-      
-      setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
+      message.error('Error sending message. Please try again.');
     }
   };
 

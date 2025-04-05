@@ -21,7 +21,6 @@ const messageApi = {
 
   getConversation: async (otherUserId, limit = 50) => {
     try {
-
       const response = await api.get(
         `/messages/conversation/${otherUserId}?limit=${limit}`
       );
@@ -31,7 +30,7 @@ const messageApi = {
           !response.data.content.messages ||
           response.data.content.messages.length === 0
         ) {
-          console.log("No messages found in API response");
+          console.log();
         }
       }
 
