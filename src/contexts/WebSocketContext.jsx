@@ -3,21 +3,16 @@ import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
 import socketService from '../services/websocketService';
 
-
 const SocketContext = createContext(null);
 
 export const SocketProvider = ({ children }) => {
   const user = useSelector(state => state.user);
   const isAuthenticated = user?.isAuthenticated;
-  const userId = user?.id;
   
   const [isConnected, setIsConnected] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [messages, setMessages] = useState([]); 
-  const [chatState, setChatState] = useState({
-    activeConversations: {},
-    unreadCounts: {} 
-  });
+  const [messages, setMessages] = useState([]);
+  const [conversations, setConversations] = useState([]);
+  const [unreadCounts, setUnreadCounts] = useState({});
 
   useEffect(() => {
     let cleanupFunctions = [];
@@ -41,51 +36,54 @@ export const SocketProvider = ({ children }) => {
               console.log('New message received via Socket.IO:', data);
               
               if (data.message) {
-                // Normalize the message format
-                const normalizedMessage = {
-                  _id: data.message._id,
-                  sender: data.message.sender,
-                  content: data.message.content,
-                  createdAt: data.message.createdAt,
-                  userId: data.message.userId,
-                  adminId: data.message.adminId,
-                  isRead: data.message.isRead || false
-                };
-                
-                // Add to global message store
+                // Add to messages state
                 setMessages(prev => {
-                  const isDuplicate = prev.some(msg => msg._id === normalizedMessage._id);
-                  if (isDuplicate) {
-                    console.log('Message already exists in context store');
-                    return prev;
-                  }
-                  console.log('Adding new message to context store');
-                  return [...prev, normalizedMessage];
+                  const exists = prev.some(m => m._id === data.message._id);
+                  if (exists) return prev;
+                  return [...prev, data.message];
                 });
                 
-                // Also update chat state (unread counts, etc.)
-                setChatState(prev => {
-                  const otherUserId = normalizedMessage.sender === 'admin' 
-                    ? normalizedMessage.userId
-                    : normalizedMessage.adminId;
-                  
-                  return {
+                // Update unread counts
+                if (data.message.sender !== (user.role === 'admin' ? 'admin' : 'user')) {
+                  const otherId = user.role === 'admin' ? data.message.userId : data.message.adminId;
+                  setUnreadCounts(prev => ({
                     ...prev,
-                    unreadCounts: {
-                      ...prev.unreadCounts,
-                      [otherUserId]: (prev.unreadCounts[otherUserId] || 0) + 1
-                    }
-                  };
-                });
+                    [otherId]: (prev[otherId] || 0) + 1
+                  }));
+                }
               }
             });
             
             const onMessageReadUnsubscribe = socketService.addEventListener('message_read', (data) => {
-              setMessages(prev => 
-                prev.map(msg => 
-                  msg._id === data.messageId ? { ...msg, isRead: true } : msg
-                )
-              );
+              if (data.messageId) {
+                setMessages(prev => 
+                  prev.map(msg => 
+                    msg._id === data.messageId ? { ...msg, isRead: true } : msg
+                  )
+                );
+              }
+            });
+            
+            const onConversationReadUnsubscribe = socketService.addEventListener('conversation_read', (data) => {
+              if (data.conversationId && data.reader) {
+                // Mark all messages from the reader as read
+                setMessages(prev => 
+                  prev.map(msg => {
+                    if (msg.sender === data.reader) {
+                      return { ...msg, isRead: true };
+                    }
+                    return msg;
+                  })
+                );
+                
+                // Reset unread count
+                if (data.reader !== (user.role === 'admin' ? 'admin' : 'user')) {
+                  setUnreadCounts(prev => ({
+                    ...prev,
+                    [data.conversationId]: 0
+                  }));
+                }
+              }
             });
 
             cleanupFunctions = [
@@ -93,6 +91,7 @@ export const SocketProvider = ({ children }) => {
               onDisconnectedUnsubscribe,
               onNewMessageUnsubscribe,
               onMessageReadUnsubscribe,
+              onConversationReadUnsubscribe
             ];
           } else {
             console.error('Could not connect to Socket.IO. Check the URL and token.');
@@ -108,6 +107,7 @@ export const SocketProvider = ({ children }) => {
 
     setupSocket();
 
+    // Cleanup function
     return () => {
       cleanupFunctions.forEach(cleanup => {
         if (typeof cleanup === 'function') {
@@ -116,16 +116,12 @@ export const SocketProvider = ({ children }) => {
       });
       socketService.disconnect();
     };
-  }, [isAuthenticated, userId]);
+  }, [isAuthenticated, user]);
 
-  const clearNotification = (notificationId) => {
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
-  };
-  
   const addMessage = useCallback((message) => {
     setMessages(prev => {
-      const isDuplicate = prev.some(msg => msg._id === message._id);
-      if (isDuplicate) return prev;
+      const exists = prev.some(m => m._id === message._id);
+      if (exists) return prev;
       return [...prev, message];
     });
   }, []);
@@ -137,52 +133,47 @@ export const SocketProvider = ({ children }) => {
     ).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   }, [messages]);
   
-  const sendMessage = useCallback((conversationId, content, callback) => {
-    return socketService.sendMessage(conversationId, content, callback);
+  const sendMessage = useCallback((receiverId, content, callback) => {
+    return socketService.sendMessage(receiverId, content, callback);
   }, []);
   
   const markAsRead = useCallback((messageId, callback) => {
     return socketService.markMessageAsRead(messageId, callback);
   }, []);
   
-  const markConversationAsRead = useCallback((userId, adminId, currentUserRole) => {
+  const markConversationAsRead = useCallback((userId, adminId, role) => {
+    // Update local state
     setMessages(prev => 
       prev.map(msg => {
         if ((msg.userId === userId && msg.adminId === adminId) &&
-            ((currentUserRole === 'admin' && msg.sender === 'user') ||
-             (currentUserRole === 'user' && msg.sender === 'admin'))) {
+            ((role === 'admin' && msg.sender === 'user') ||
+             (role === 'user' && msg.sender === 'admin'))) {
           return { ...msg, isRead: true };
         }
         return msg;
       })
     );
     
-    setChatState(prev => ({
+    // Reset unread count
+    const otherId = role === 'admin' ? userId : adminId;
+    setUnreadCounts(prev => ({
       ...prev,
-      unreadCounts: {
-        ...prev.unreadCounts,
-        [currentUserRole === 'admin' ? userId : adminId]: 0
-      }
+      [otherId]: 0
     }));
-  }, []);
-  
-  const notifyNewMessage = useCallback((message) => {
-    socketService.notifyNewMessage(message);
   }, []);
 
   const value = {
     isConnected,
-    notifications,
-    clearNotification,
     messages,
     addMessage,
     getConversationMessages,
     sendMessage,
     markAsRead,
     markConversationAsRead,
-    notifyNewMessage,
-    chatState,
-    setChatState,
+    conversations,
+    setConversations,
+    unreadCounts,
+    setUnreadCounts,
     addEventListener: socketService.addEventListener.bind(socketService),
     removeEventListener: socketService.removeEventListener.bind(socketService)
   };

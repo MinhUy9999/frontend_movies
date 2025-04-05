@@ -1,11 +1,10 @@
-// src/pages/User/BookingDetails.jsx
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Card, Button, Tag, Descriptions, Spin, message, Modal } from 'antd';
 import { ExclamationCircleOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import bookingApi from '../../apis/bookingApi';
-import { useWebSocket } from '../../contexts/WebSocketContext';
+import { useSocket } from "../../contexts/WebSocketContext";
 
 const { confirm } = Modal;
 
@@ -13,7 +12,7 @@ const BookingDetails = () => {
   const { bookingId } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useSelector((state) => state.user);
-  const { addEventListener } = useWebSocket();
+  const { addEventListener } = useSocket();
   
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);

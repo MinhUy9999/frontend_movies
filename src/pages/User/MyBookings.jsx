@@ -1,22 +1,18 @@
-// src/pages/User/MyBookings.jsx
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { Table, Tag, message } from 'antd';
-// import { ExclamationCircleOutlined } from '@ant-design/icons';
 import bookingApi from '../../apis/bookingApi';
-import { useWebSocket } from '../../contexts/WebSocketContext';
+import { useSocket } from "../../contexts/WebSocketContext";
 
-// const { confirm } = Modal;
 
 const MyBookings = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { isAuthenticated } = useSelector((state) => state.user);
-  const { addEventListener } = useWebSocket();
+  const { addEventListener } = useSocket();
 
-  // Check if user is authenticated
   useEffect(() => {
     if (!isAuthenticated) {
       message.error('Please log in to view your bookings');

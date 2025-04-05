@@ -1,5 +1,4 @@
 import { io } from "socket.io-client";
-import { messageApi } from "../apis/messageApi";
 
 class SocketService {
   constructor() {
@@ -12,27 +11,14 @@ class SocketService {
 
   async connect() {
     try {
-      // Get token for socket authentication
-      const response = await messageApi.getSocketToken();
-
-      if (
-        response.statusCode !== 200 ||
-        !response.content ||
-        !response.content.token
-      ) {
-        console.error("Failed to get socket token:", response);
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        console.error("No access token available");
         return false;
       }
 
-      const token = response.content.token;
+      const socketUrl = import.meta.env.VITE_WS_URL || "http://localhost:5000";
 
-      // Determine socket URL based on API URL
-      const baseUrl =
-        import.meta.env.VITE_API_URL ||
-        "https://backend-movies-busc.onrender.com";
-      const socketUrl = baseUrl.replace(/\/api$/, "");
-
-      // Create socket connection with auth
       this.socket = io(socketUrl, {
         auth: { token },
         reconnection: true,
@@ -53,25 +39,29 @@ class SocketService {
       this.socket.on("message_read", (data) =>
         this.triggerEvent("message_read", data)
       );
-      this.socket.on("all_messages_read", (data) =>
-        this.triggerEvent("all_messages_read", data)
+      this.socket.on("conversation_read", (data) =>
+        this.triggerEvent("conversation_read", data)
       );
       this.socket.on("typing", (data) => this.triggerEvent("typing", data));
+      this.socket.on("pong", (data) => this.triggerEvent("pong", data));
+      this.socket.on("error", (data) =>
+        this.triggerEvent("socket_error", data)
+      );
 
       // Wait for connection to be established
       return new Promise((resolve) => {
-        this.socket.once("connect", () => {
-          this.isConnected = true;
-          resolve(true);
-        });
-
-        // If connection fails, resolve with false after timeout
-        setTimeout(() => {
+        const timeout = setTimeout(() => {
           if (!this.isConnected) {
             console.warn("Socket connection timeout");
             resolve(false);
           }
         }, 5000);
+
+        this.socket.once("connect", () => {
+          clearTimeout(timeout);
+          this.isConnected = true;
+          resolve(true);
+        });
       });
     } catch (error) {
       console.error("Error connecting to socket:", error);
@@ -84,11 +74,21 @@ class SocketService {
     this.isConnected = true;
     this.reconnectAttempts = 0;
     this.triggerEvent("connected", { connected: true });
+
+    // Send ping to keep connection alive
+    this.pingInterval = setInterval(() => {
+      if (this.socket && this.isConnected) {
+        this.socket.emit("ping");
+      }
+    }, 30000);
   }
 
   handleDisconnect(reason) {
     console.log("Socket disconnected:", reason);
     this.isConnected = false;
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+    }
     this.triggerEvent("disconnected", { reason });
   }
 
@@ -97,7 +97,7 @@ class SocketService {
     this.triggerEvent("error", { error });
   }
 
-  // Send a message using Socket.IO
+  // Send a message
   sendMessage(conversationId, content, callback) {
     if (!this.socket || !this.isConnected) {
       console.error("Socket not connected. Cannot send message.");
@@ -105,7 +105,13 @@ class SocketService {
       return false;
     }
 
-    this.socket.emit("send_message", { conversationId, content }, callback);
+    this.socket.emit(
+      "chat_message",
+      { receiverId: conversationId, content },
+      (response) => {
+        if (callback) callback(response);
+      }
+    );
     return true;
   }
 
@@ -117,34 +123,35 @@ class SocketService {
       return false;
     }
 
-    this.socket.emit("mark_read", { messageId }, callback);
+    this.socket.emit("message_read", { messageId }, (response) => {
+      if (callback) callback(response);
+    });
     return true;
   }
 
-  // Mark all messages in a conversation as read
-  markAllAsRead(conversationId, callback) {
+  joinConversation(conversationId, callback) {
     if (!this.socket || !this.isConnected) {
-      console.error("Socket not connected. Cannot mark all as read.");
+      console.error("Socket not connected. Cannot join conversation.");
       if (callback) callback({ success: false, error: "Socket not connected" });
       return false;
     }
 
-    this.socket.emit("mark_all_read", { conversationId }, callback);
+    this.socket.emit("join_conversation", { conversationId }, (response) => {
+      if (callback) callback(response);
+    });
     return true;
   }
 
-  // Send typing status
   sendTypingStatus(conversationId, isTyping) {
     if (!this.socket || !this.isConnected) {
       console.error("Socket not connected. Cannot send typing status.");
       return false;
     }
 
-    this.socket.emit("typing", { conversationId, isTyping });
+    this.socket.emit("typing", { conversationId, typing: isTyping });
     return true;
   }
 
-  // Add event listener
   addEventListener(event, callback) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
@@ -154,36 +161,24 @@ class SocketService {
     return () => this.removeEventListener(event, callback);
   }
 
-  // Remove event listener
   removeEventListener(event, callback) {
     if (this.listeners.has(event)) {
       this.listeners.get(event).delete(callback);
     }
   }
 
-  // Trigger event for all registered listeners
   triggerEvent(event, data) {
     if (this.listeners.has(event)) {
       const callbacks = this.listeners.get(event);
       callbacks.forEach((callback) => setTimeout(() => callback(data), 0));
     }
-
-    // Also trigger for wildcard listeners
-    if (this.listeners.has("*")) {
-      const callbacks = this.listeners.get("*");
-      callbacks.forEach((callback) =>
-        setTimeout(() => callback({ type: event, ...data }), 0)
-      );
-    }
   }
 
-  // Notify about new message (used for local state updates)
-  notifyNewMessage(message) {
-    this.triggerEvent("new_message", { message });
-  }
-
-  // Disconnect socket
   disconnect() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+    }
+
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
@@ -192,5 +187,5 @@ class SocketService {
   }
 }
 
-export const socketService = new SocketService();
+const socketService = new SocketService();
 export default socketService;

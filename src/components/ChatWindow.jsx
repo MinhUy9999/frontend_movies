@@ -5,25 +5,26 @@ import { useSocket } from '../contexts/WebSocketContext';
 import messageApi from '../apis/messageApi';
 
 const ChatWindow = ({ onClose }) => {
-  const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [admins, setAdmins] = useState([]);
   const [selectedAdmin, setSelectedAdmin] = useState(null);
-  const [conversation, setConversation] = useState(null);
   const messagesEndRef = useRef(null);
   
   const { 
-    addEventListener,
     isConnected, 
     addMessage, 
     getConversationMessages, 
     sendMessage,
     markConversationAsRead,
+    addEventListener
   } = useSocket();
 
   const user = useSelector((state) => state.user) || {};
   const userId = user.id || localStorage.getItem('userId');
+
+  const messages = selectedAdmin ? 
+    getConversationMessages(userId, selectedAdmin._id) : [];
 
   useEffect(() => {
     const fetchAdmins = async () => {
@@ -54,17 +55,9 @@ const ChatWindow = ({ onClose }) => {
           const response = await messageApi.getConversation(selectedAdmin._id);
           
           if (response.statusCode === 200 && response.content) {
-            if (response.content.conversation) {
-              setConversation(response.content.conversation);
-            }
-            
             if (response.content.messages) {
               // Add messages to global context
               response.content.messages.forEach(msg => addMessage(msg));
-              
-              // Get messages for this conversation
-              const conversationMessages = getConversationMessages(userId, selectedAdmin._id);
-              setMessages(conversationMessages);
               
               // Mark conversation as read
               markConversationAsRead(userId, selectedAdmin._id, 'user');
@@ -79,48 +72,37 @@ const ChatWindow = ({ onClose }) => {
 
       fetchConversation();
     }
-  }, [selectedAdmin, userId, addMessage, getConversationMessages, markConversationAsRead]);
+  }, [selectedAdmin, userId, addMessage, markConversationAsRead]);
 
   useEffect(() => {
-    if (!selectedAdmin || !userId || !conversation) return;
-
-    const handleNewMessage = (data) => {
+    // Listen for new messages
+    const unsubscribe = addEventListener('new_message', (data) => {
       console.log('Socket.IO new_message received in ChatWindow:', data);
       
-      if (data.message) {
-        const msg = data.message;
+      if (data.message && selectedAdmin) {
         const isForCurrentChat = 
-          (msg.userId === userId && msg.adminId === selectedAdmin._id) || 
-          (msg.adminId === userId && msg.userId === selectedAdmin._id);
-        
-        console.log('Message is for current chat:', isForCurrentChat);
+          (data.message.userId === userId && data.message.adminId === selectedAdmin._id) || 
+          (data.message.adminId === userId && data.message.userId === selectedAdmin._id);
         
         if (isForCurrentChat) {
-          setMessages(prev => {
-            const exists = prev.some(m => m._id === msg._id);
-            if (exists) return prev;
-            return [...prev, msg];
-          });
+          if (data.message.sender === 'admin') {
+            markAsRead(data.message._id);
+          }
         }
       }
-    };
-    
-    console.log('Adding new_message listener in ChatWindow');
-    const unsubscribe = addEventListener('new_message', handleNewMessage);
+    });
 
     return () => unsubscribe();
-  }, [addEventListener, selectedAdmin, userId, conversation]);
+  }, [addEventListener, selectedAdmin, userId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedAdmin || !conversation) return;
+    if (!newMessage.trim() || !selectedAdmin) return;
 
     try {
-      console.log('Sending message to admin:', selectedAdmin._id);
-      
       // Create a temporary message for optimistic UI update
       const tempId = `temp-${Date.now()}`;
       const tempMsg = {
@@ -134,32 +116,21 @@ const ChatWindow = ({ onClose }) => {
         isTemporary: true
       };
       
-      // Update UI immediately
-      setMessages(prev => [...prev, tempMsg]);
+      // Add to context (will appear in UI immediately)
+      addMessage(tempMsg);
       
       // Clear input before sending
       const messageToSend = newMessage;
       setNewMessage('');
       
-      // Send via Socket.IO
-      sendMessage(conversation._id, messageToSend, (response) => {
+      // Send message via socket
+      sendMessage(selectedAdmin._id, messageToSend, (response) => {
         console.log('Send message response:', response);
         
-        if (response.success && response.message) {
-          const newMsg = response.message;
-          
-          // Replace temp message with real one from server
-          setMessages(prev => prev.map(msg => 
-            msg._id === tempId ? newMsg : msg
-          ));
-          
-          // Add to global message store
-          addMessage(newMsg);
-        } else {
-          console.error('Error response from sendMessage:', response);
-          // Show error and remove temp message
-          setMessages(prev => prev.filter(msg => msg._id !== tempId));
-          alert('Failed to send message');
+        if (!response || !response.success) {
+          // Show error and handle failure
+          console.error('Failed to send message:', response);
+          alert('Failed to send message. Please try again.');
         }
       });
     } catch (error) {
@@ -220,16 +191,11 @@ const ChatWindow = ({ onClose }) => {
           </div>
         ) : (
           messages.map((msg) => {
-            if (!msg || typeof msg !== 'object') {
-              console.error('Invalid message format:', msg);
-              return null;
-            }
-
             const isSentByMe = msg.sender === 'user';
 
             return (
               <div
-                key={msg._id || msg.id}
+                key={msg._id}
                 className={`flex ${isSentByMe ? 'justify-end' : 'justify-start'}`}
               >
                 <div
@@ -260,11 +226,11 @@ const ChatWindow = ({ onClose }) => {
           onKeyPress={handleKeyPress}
           placeholder="Nhập tin nhắn..."
           className="flex-1 p-2 border rounded-l-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-          disabled={!selectedAdmin || !conversation}
+          disabled={!selectedAdmin}
         />
         <button
           onClick={handleSendMessage}
-          disabled={!newMessage.trim() || !selectedAdmin || !conversation}
+          disabled={!newMessage.trim() || !selectedAdmin}
           className="bg-blue-600 text-white p-2 rounded-r-lg hover:bg-blue-700 disabled:bg-blue-300"
         >
           <Send size={20} />
