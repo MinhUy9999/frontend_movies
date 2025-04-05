@@ -75,7 +75,6 @@ class SocketService {
     this.reconnectAttempts = 0;
     this.triggerEvent("connected", { connected: true });
 
-    // Send ping to keep connection alive
     this.pingInterval = setInterval(() => {
       if (this.socket && this.isConnected) {
         this.socket.emit("ping");
@@ -106,7 +105,6 @@ class SocketService {
 
     console.log("Sending message to:", receiverId, "content:", content);
 
-    // Thử sử dụng API thay vì socket nếu socket không thành công
     this.socket.emit(
       "chat_message",
       { receiverId: receiverId, content },
@@ -127,7 +125,6 @@ class SocketService {
 
   async sendMessageViaAPI(receiverId, content, callback) {
     try {
-      // Đầu tiên lấy hoặc tạo conversation
       const messageApi = await import("../apis/messageApi").then(
         (m) => m.default
       );
@@ -141,7 +138,6 @@ class SocketService {
 
       const conversationId = convResponse.content.conversation._id;
 
-      // Gửi tin nhắn qua API
       const msgResponse = await messageApi.sendMessage(conversationId, content);
 
       if (msgResponse.statusCode === 201 || msgResponse.statusCode === 200) {
@@ -156,7 +152,6 @@ class SocketService {
     }
   }
 
-  // Mark a message as read
   markMessageAsRead(messageId, callback) {
     if (!this.socket || !this.isConnected) {
       console.error("Socket not connected. Cannot mark message as read.");

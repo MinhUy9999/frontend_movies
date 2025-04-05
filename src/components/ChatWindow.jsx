@@ -29,8 +29,6 @@ const ChatWindow = ({ onClose }) => {
   const messages = selectedAdmin ? 
     getConversationMessages(userId, selectedAdmin._id) : [];
 
-    
-
     useEffect(() => {
       const fetchAdmins = async () => {
         try {
@@ -139,16 +137,43 @@ const ChatWindow = ({ onClose }) => {
       const messageToSend = newMessage;
       setNewMessage('');
       
-      // Đảm bảo sendMessage có đúng tham số
-      sendMessage(selectedAdmin._id, messageToSend, (response) => {
-        if (!response || response.success === false) {
-          console.error('Failed to send message:', response);
-          alert('Failed to send message. Please try again.');
+      const conversationResponse = await messageApi.getOrCreateConversation(selectedAdmin._id);
+      
+      if (conversationResponse.statusCode === 200 || conversationResponse.statusCode === 201) {
+        const conversationId = conversationResponse.content.conversation._id;
+        
+        const socketSent = sendMessage(selectedAdmin._id, messageToSend, (response) => {
+          if (!response || response.success === false) {
+            console.log('WebSocket message failed, trying API...');
+            
+            messageApi.sendMessage(conversationId, messageToSend)
+              .then(apiResponse => {
+                console.log('API message response:', apiResponse);
+              })
+              .catch(err => {
+                console.error('Failed to send message via API:', err);
+                alert('Không thể gửi tin nhắn. Vui lòng thử lại.');
+              });
+          }
+        });
+        
+        if (!socketSent || !isConnected) {
+          console.log('WebSocket not available, using API...');
+          try {
+            const apiResponse = await messageApi.sendMessage(conversationId, messageToSend);
+            console.log('API message response:', apiResponse);
+          } catch (err) {
+            console.error('Failed to send message via API:', err);
+            alert('Không thể gửi tin nhắn. Vui lòng thử lại.');
+          }
         }
-      });
+      } else {
+        console.error('Could not get conversation with admin');
+        alert('Không thể tạo cuộc trò chuyện với admin. Vui lòng thử lại.');
+      }
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Error sending message. Please try again.');
+      alert('Lỗi khi gửi tin nhắn. Vui lòng thử lại.');
     }
   };
 
