@@ -12,20 +12,13 @@ const ChatWindow = ({ onClose }) => {
   const [admins, setAdmins] = useState([]);
   const [selectedAdmin, setSelectedAdmin] = useState(null);
   const messagesEndRef = useRef(null);
-<<<<<<< HEAD
   
   const { 
     addEventListener,
     isConnected, 
     addMessage, 
     getConversationMessages, 
-=======
 
-  const {
-    isConnected,
-    addMessage,
-    getConversationMessages,
->>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
     markConversationAsRead,
     notifyNewMessage
   } = useWebSocket();
@@ -100,7 +93,6 @@ const ChatWindow = ({ onClose }) => {
       console.log('WebSocket new_message received in ChatWindow:', data);
       
       if (data.message) {
-<<<<<<< HEAD
         const msg = data.message;
         const isForCurrentChat = 
           (msg.userId === userId && msg.adminId === selectedAdmin._id) || 
@@ -109,13 +101,6 @@ const ChatWindow = ({ onClose }) => {
         console.log('Message is for current chat:', isForCurrentChat);
         
         if (isForCurrentChat) {
-=======
-        const isRelevantToCurrentChat =
-          (data.message.userId === userId && data.message.adminId === selectedAdmin._id) ||
-          (data.message.adminId === selectedAdmin._id && data.message.userId === userId);
-
-        if (isRelevantToCurrentChat) {
->>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
           setMessages(prev => {
             const exists = prev.some(m => m._id === msg._id);
             if (exists) return prev;
@@ -124,12 +109,7 @@ const ChatWindow = ({ onClose }) => {
         }
       }
     };
-<<<<<<< HEAD
-  
     console.log('Adding new_message listener in ChatWindow');
-=======
-
->>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
     const unsubscribe = addEventListener('new_message', handleNewMessage);
 
     return () => unsubscribe();
@@ -171,7 +151,6 @@ const ChatWindow = ({ onClose }) => {
 
       if (response.statusCode === 201 && response.content && response.content.message) {
         const newMsg = response.content.message;
-<<<<<<< HEAD
         
         // Replace temp message with real one from server
         setMessages(prev => prev.map(msg => 
@@ -182,14 +161,6 @@ const ChatWindow = ({ onClose }) => {
         addMessage(newMsg);
         
         // Notify other clients via WebSocket
-=======
-        console.log('Adding new message to state and context:', newMsg);
-
-        addMessage(newMsg);
-
-        setMessages(prev => [...prev, newMsg]);
-
->>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
         notifyNewMessage(newMsg);
       } else {
         console.error('Error response from sendMessage:', response);
@@ -197,11 +168,6 @@ const ChatWindow = ({ onClose }) => {
         setMessages(prev => prev.filter(msg => msg._id !== tempId));
         message.error('Failed to send message');
       }
-<<<<<<< HEAD
-=======
-
-      setNewMessage('');
->>>>>>> 51f81153965008cd95561022aa9ee07b26e2cd10
     } catch (error) {
       console.error('Error sending message:', error);
       message.error('Error sending message. Please try again.');
