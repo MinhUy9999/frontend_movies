@@ -97,22 +97,63 @@ class SocketService {
     this.triggerEvent("error", { error });
   }
 
-  // Send a message
-  sendMessage(conversationId, content, callback) {
+  sendMessage(receiverId, content, callback) {
     if (!this.socket || !this.isConnected) {
       console.error("Socket not connected. Cannot send message.");
       if (callback) callback({ success: false, error: "Socket not connected" });
       return false;
     }
 
+    console.log("Sending message to:", receiverId, "content:", content);
+
+    // Thử sử dụng API thay vì socket nếu socket không thành công
     this.socket.emit(
       "chat_message",
-      { receiverId: conversationId, content },
+      { receiverId: receiverId, content },
       (response) => {
-        if (callback) callback(response);
+        console.log("Socket message response:", response);
+
+        if (response && response.success === false) {
+          // Thử gửi qua API
+          console.log("Socket failed, trying API...");
+          this.sendMessageViaAPI(receiverId, content, callback);
+        } else {
+          if (callback) callback({ success: true, data: response });
+        }
       }
     );
     return true;
+  }
+
+  async sendMessageViaAPI(receiverId, content, callback) {
+    try {
+      // Đầu tiên lấy hoặc tạo conversation
+      const messageApi = await import("../apis/messageApi").then(
+        (m) => m.default
+      );
+      const convResponse = await messageApi.getOrCreateConversation(receiverId);
+
+      if (convResponse.statusCode !== 200 && convResponse.statusCode !== 201) {
+        console.error("Failed to get/create conversation", convResponse);
+        if (callback) callback({ success: false, error: convResponse.message });
+        return;
+      }
+
+      const conversationId = convResponse.content.conversation._id;
+
+      // Gửi tin nhắn qua API
+      const msgResponse = await messageApi.sendMessage(conversationId, content);
+
+      if (msgResponse.statusCode === 201 || msgResponse.statusCode === 200) {
+        if (callback) callback({ success: true, data: msgResponse.content });
+      } else {
+        console.error("Failed to send message via API", msgResponse);
+        if (callback) callback({ success: false, error: msgResponse.message });
+      }
+    } catch (error) {
+      console.error("Error sending message via API:", error);
+      if (callback) callback({ success: false, error: error.message });
+    }
   }
 
   // Mark a message as read

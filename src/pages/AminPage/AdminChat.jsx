@@ -29,29 +29,52 @@ const AdminChat = () => {
   const messages = activeUser ? 
     getConversationMessages(activeUser._id, adminId) : [];
 
-  useEffect(() => {
-    const fetchConversations = async () => {
-      try {
-        const response = await messageApi.getUserConversations();
-        if (response.statusCode === 200 && response.content && response.content.conversations) {
-          setConversations(response.content.conversations);
+    useEffect(() => {
+      const fetchConversations = async () => {
+        try {
+          setLoading(true);
+          const response = await messageApi.getUserConversations();
+          console.log('API Response:', response);
           
-          if (response.content.conversations.length > 0) {
-            const firstConversation = response.content.conversations[0];
-            if (firstConversation.type === 'user' && firstConversation.user) {
-              setActiveUser(firstConversation.user);
+          if (response.statusCode === 200 && response.content) {
+            let conversationsList = [];
+            
+            // Xử lý dữ liệu theo đúng cấu trúc API trả về trong hình 1
+            if (response.content.conversations && Array.isArray(response.content.conversations)) {
+              conversationsList = response.content.conversations.map(conv => {
+                return {
+                  _id: conv._id,
+                  type: 'user',
+                  user: {
+                    _id: conv.userId?._id || conv.userId,
+                    username: conv.userId?.username || 'User',
+                    avatar: conv.userId?.avatar,
+                    email: conv.userId?.email
+                  },
+                  adminId: conv.adminId?._id || conv.adminId,
+                  lastMessage: conv.lastMessage,
+                  unreadCount: conv.unreadAdmin || 0
+                };
+              });
+            }
+            
+            console.log('Processed conversations:', conversationsList);
+            setConversations(conversationsList);
+            
+            if (conversationsList.length > 0 && !activeUser) {
+              // Chọn user từ conversation đầu tiên
+              setActiveUser(conversationsList[0].user);
             }
           }
+          setLoading(false);
+        } catch (error) {
+          console.error('Error fetching conversations:', error);
+          setLoading(false);
         }
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching conversations:', error);
-        setLoading(false);
-      }
-    };
-    
-    fetchConversations();
-  }, [setConversations]);
+      };
+      
+      fetchConversations();
+    }, [setConversations]);
 
   useEffect(() => {
     if (activeUser && adminId) {
@@ -181,7 +204,17 @@ const AdminChat = () => {
         ) : (
           <div>
             {conversations.map((conv) => {
-              const convUser = conv.type === 'user' ? conv.user : null;
+              let convUser = null;
+              
+              if (conv.type === 'user' && conv.user) {
+                convUser = conv.user;
+              } else if (conv.userId) {
+                convUser = {
+                  _id: typeof conv.userId === 'object' ? conv.userId._id : conv.userId,
+                  username: (typeof conv.userId === 'object' && conv.userId.username) || 'User',
+                  avatar: (typeof conv.userId === 'object' && conv.userId.avatar) || null,
+                };
+              }
               
               if (!convUser) return null;
               
@@ -207,7 +240,7 @@ const AdminChat = () => {
                       <div className="ml-3">
                         <p className="font-semibold">{convUser.username}</p>
                         <p className="text-sm text-gray-500 truncate w-40">
-                          {conv.lastMessage ? conv.lastMessage.content : 'Bắt đầu cuộc trò chuyện'}
+                          {conv.lastMessage ? conv.lastMessage : 'Bắt đầu cuộc trò chuyện'}
                         </p>
                       </div>
                     </div>

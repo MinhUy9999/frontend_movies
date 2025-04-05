@@ -25,13 +25,15 @@ const ChatWindow = ({ onClose }) => {
   const userId = user.id || localStorage.getItem('userId') || 
               (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null);
 
+
   const messages = selectedAdmin ? 
     getConversationMessages(userId, selectedAdmin._id) : [];
+
+    
 
     useEffect(() => {
       const fetchAdmins = async () => {
         try {
-    
           const effectiveRole = userRole || localStorage.getItem('userRole');
           
           if (effectiveRole !== 'user') {
@@ -42,27 +44,30 @@ const ChatWindow = ({ onClose }) => {
           const response = await messageApi.getAvailableAdmins();
           
           if (response.statusCode === 200 && response.content) {
+            let adminsList = [];
+            
             if (response.content.admins && response.content.admins.length > 0) {
-              setAdmins(response.content.admins);
+              adminsList = response.content.admins;
+            } else if (Array.isArray(response.content)) {
+              adminsList = response.content;
             }
-            else if (Array.isArray(response.content)) {
-              setAdmins(response.content);
+            
+            setAdmins(adminsList);
+            
+            // Tự động chọn admin đầu tiên nếu có
+            if (adminsList.length > 0 && !selectedAdmin) {
+              setSelectedAdmin(adminsList[0]);
             }
-            else {
-              console.warn('No admins found in response');
-            }
-          } else {
-            console.warn('No valid response from admin API');
           }
           setLoading(false);
         } catch (error) {
-          console.error('Complete error fetching admins:', error);
+          console.error('Error fetching admins:', error);
           setLoading(false);
         }
       };
     
       fetchAdmins();
-    }, [userRole]);
+    }, [userRole, selectedAdmin]);
 
   useEffect(() => {
     if (selectedAdmin && userId) {
@@ -115,7 +120,7 @@ const ChatWindow = ({ onClose }) => {
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedAdmin) return;
-
+  
     try {
       const tempId = `temp-${Date.now()}`;
       const tempMsg = {
@@ -134,9 +139,9 @@ const ChatWindow = ({ onClose }) => {
       const messageToSend = newMessage;
       setNewMessage('');
       
+      // Đảm bảo sendMessage có đúng tham số
       sendMessage(selectedAdmin._id, messageToSend, (response) => {
-        
-        if (!response || !response.success) {
+        if (!response || response.success === false) {
           console.error('Failed to send message:', response);
           alert('Failed to send message. Please try again.');
         }
