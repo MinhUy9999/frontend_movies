@@ -49,11 +49,11 @@ const MoviesShowing = () => {
                 loop
                 spaceBetween={40} // Tăng khoảng cách giữa các slide
                 slidesPerView={5} // Mặc định 1 slide trên mobile
-                breakpoints={{
-                    320: { slidesPerView: 1, spaceBetween: 10 }, // 1 slide trên mobile
-                    768: { slidesPerView: 2, spaceBetween: 30 }, // 2 slide trên tablet
-                    1024: { slidesPerView: 2, spaceBetween: 40 }, // 2 slide trên desktop
-                }}
+                // breakpoints={{
+                //     320: { slidesPerView: 1, spaceBetween: 10 }, // 1 slide trên mobile
+                //     768: { slidesPerView: 2, spaceBetween: 30 }, // 2 slide trên tablet
+                //     1024: { slidesPerView: 2, spaceBetween: 40 }, // 2 slide trên desktop
+                // }}
                 className="w-full h-[500px] md:h-[450px]" // Tăng chiều cao một chút
             >
                 {movies.map((movie) => (

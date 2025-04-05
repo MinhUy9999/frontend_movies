@@ -1,4 +1,4 @@
-import { useSelector, useDispatch } from "react-redux"; // Thêm useDispatch
+import { useSelector, useDispatch } from "react-redux";
 import { useState } from "react";
 import { Button, Menu } from "antd";
 import { Link, useNavigate, Outlet } from "react-router-dom";
@@ -12,8 +12,9 @@ import {
     DesktopOutlined,
     CalendarOutlined,
     MessageOutlined,
+    HomeOutlined, // Thêm icon cho nút trang chủ
 } from "@ant-design/icons";
-import { logout } from "../../store/userSlice"; // Import logout action
+import { logout } from "../../store/userSlice";
 
 const menuItems = [
     {
@@ -28,34 +29,34 @@ const menuItems = [
     },
     {
         key: "seats",
-        icon: <ShareAltOutlined />, // Icon ghế
+        icon: <ShareAltOutlined />,
         label: <Link to="/admin/seats">Quản lý ghế</Link>,
     },
     {
         key: "theaters",
-        icon: <BankOutlined />, // Icon rạp chiếu
+        icon: <BankOutlined />,
         label: <Link to="/admin/theaters">Quản lý rạp chiếu</Link>,
     },
     {
         key: "screens",
-        icon: <DesktopOutlined />, // Icon màn hình
+        icon: <DesktopOutlined />,
         label: <Link to="/admin/screens">Quản lý màn hình</Link>,
     },
     {
         key: "showtimes",
-        icon: <CalendarOutlined />, // Icon lịch chiếu
+        icon: <CalendarOutlined />,
         label: <Link to="/admin/showtimes">Quản lý lịch chiếu</Link>,
     },
     {
         key: "chat",
-        icon: <MessageOutlined />, // Icon tin nhắn
+        icon: <MessageOutlined />,
         label: <Link to="/admin/chat">Quản lý tin nhắn</Link>,
     },
 ];
 
 const AdminPage = () => {
     const { username, role } = useSelector((state) => state.user);
-    const dispatch = useDispatch(); // Thêm dispatch
+    const dispatch = useDispatch();
     const navigate = useNavigate();
     const [collapsed, setCollapsed] = useState(false);
 
@@ -68,10 +69,14 @@ const AdminPage = () => {
     };
 
     const handleLogout = () => {
-        dispatch(logout()); // Dispatch logout action
-        localStorage.removeItem("accessToken"); // Xóa token
-        localStorage.removeItem("user"); // Xóa thông tin user
-        navigate("/login"); // Chuyển về trang login
+        dispatch(logout());
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("user");
+        navigate("/login");
+    };
+
+    const handleHomeClick = () => {
+        navigate("/"); // Chuyển về trang chủ
     };
 
     if (role !== "admin") {
@@ -105,14 +110,22 @@ const AdminPage = () => {
                         <h1 className="text-3xl font-bold">
                             Trang Quản Trị - Chào mừng, {username}!
                         </h1>
-                        <Button
-                            type="primary"
-                            danger
-                            onClick={handleLogout}
-                            className="ml-4"
-                        >
-                            Đăng xuất
-                        </Button>
+                        <div>
+                            <Button
+                                type="default" // Nút mặc định để phân biệt với nút đăng xuất
+                                onClick={handleHomeClick}
+                                className="mr-4"
+                            >
+                                <HomeOutlined /> Quay về trang chủ
+                            </Button>
+                            <Button
+                                type="primary"
+                                danger
+                                onClick={handleLogout}
+                            >
+                                Đăng xuất
+                            </Button>
+                        </div>
                     </div>
                     <Outlet />
                 </div>
