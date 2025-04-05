@@ -2,12 +2,12 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { Table, Button, Tag, Modal, message } from 'antd';
-import { ExclamationCircleOutlined } from '@ant-design/icons';
+import { Table, Tag, message } from 'antd';
+// import { ExclamationCircleOutlined } from '@ant-design/icons';
 import bookingApi from '../../apis/bookingApi';
 import { useWebSocket } from '../../contexts/WebSocketContext';
 
-const { confirm } = Modal;
+// const { confirm } = Modal;
 
 const MyBookings = () => {
   const [bookings, setBookings] = useState([]);
@@ -30,7 +30,7 @@ const MyBookings = () => {
       try {
         setLoading(true);
         const response = await bookingApi.getUserBookings();
-        
+
         if (response.statusCode === 200 && response.content?.bookings) {
           setBookings(response.content.bookings);
         } else {
@@ -43,7 +43,7 @@ const MyBookings = () => {
         setLoading(false);
       }
     };
-    
+
     if (isAuthenticated) {
       fetchBookings();
     }
@@ -63,15 +63,15 @@ const MyBookings = () => {
           console.error('Error refreshing bookings:', error);
         }
       };
-      
+
       fetchUpdatedBookings();
     };
-    
+
     // Subscribe to various booking-related events
     const unsubscribeConfirmed = addEventListener('booking_confirmed', handleBookingUpdated);
     const unsubscribeExpired = addEventListener('booking_expired', handleBookingUpdated);
     const unsubscribeCancelled = addEventListener('booking_cancelled', handleBookingUpdated);
-    
+
     return () => {
       unsubscribeConfirmed();
       unsubscribeExpired();
@@ -80,72 +80,72 @@ const MyBookings = () => {
   }, [addEventListener]);
 
   // Handle booking cancellation
-  const handleCancelBooking = (bookingId) => {
-    confirm({
-      title: 'Are you sure you want to cancel this booking?',
-      icon: <ExclamationCircleOutlined />,
-      content: 'This action cannot be undone',
-      onOk: async () => {
-        try {
-          const response = await bookingApi.cancelBooking(bookingId);
-          
-          if (response.statusCode === 200) {
-            message.success('Booking cancelled successfully');
-            // Update the bookings list
-            setBookings(prevBookings => 
-              prevBookings.map(booking => 
-                booking._id === bookingId 
-                  ? { ...booking, bookingStatus: 'cancelled' }
-                  : booking
-              )
-            );
-          } else {
-            message.error(response.message || 'Failed to cancel booking');
-          }
-        } catch (error) {
-          console.error('Error cancelling booking:', error);
-          message.error('Error cancelling booking');
-        }
-      },
-    });
-  };
+  // const handleCancelBooking = (bookingId) => {
+  //   confirm({
+  //     title: 'Are you sure you want to cancel this booking?',
+  //     icon: <ExclamationCircleOutlined />,
+  //     content: 'This action cannot be undone',
+  //     onOk: async () => {
+  //       try {
+  //         const response = await bookingApi.cancelBooking(bookingId);
 
-  // Handle view booking details
-  const handleViewBooking = (bookingId) => {
-    navigate(`/user/bookings/${bookingId}`);
-  };
+  //         if (response.statusCode === 200) {
+  //           message.success('Booking cancelled successfully');
+  //           // Update the bookings list
+  //           setBookings(prevBookings =>
+  //             prevBookings.map(booking =>
+  //               booking._id === bookingId
+  //                 ? { ...booking, bookingStatus: 'cancelled' }
+  //                 : booking
+  //             )
+  //           );
+  //         } else {
+  //           message.error(response.message || 'Failed to cancel booking');
+  //         }
+  //       } catch (error) {
+  //         console.error('Error cancelling booking:', error);
+  //         message.error('Error cancelling booking');
+  //       }
+  //     },
+  //   });
+  // };
+
+  // // Handle view booking details
+  // const handleViewBooking = (bookingId) => {
+  //   navigate(`/user/bookings/${bookingId}`);
+  // };
 
   // Define table columns
   const columns = [
-    {
-      title: 'Movie',
-      dataIndex: ['showtimeId', 'movieId', 'title'],
-      key: 'movie',
-      render: (text, record) => {
-        // Handle potential nested objects from populated fields
-        if (record.showtimeId && typeof record.showtimeId === 'object') {
-          if (record.showtimeId.movieId && typeof record.showtimeId.movieId === 'object') {
-            return record.showtimeId.movieId.title;
-          }
-        }
-        return 'N/A';
-      },
-    },
-    {
-      title: 'Theater',
-      key: 'theater',
-      render: (_, record) => {
-        // Try to access nested theater info if available
-        if (record.showtimeId && typeof record.showtimeId === 'object') {
-          if (record.showtimeId.screenId && typeof record.showtimeId.screenId === 'object') {
-            if (record.showtimeId.screenId.theaterId && typeof record.showtimeId.screenId.theaterId === 'object') {
-              return record.showtimeId.screenId.theaterId.name;
-            }
-          }
-        }
-        return 'N/A';
-      },
-    },
+    // {
+    //   title: 'Movie',
+    //   dataIndex: ['showtimeId', 'movieId', 'title'],
+    //   key: 'movie',
+    //   render: (text, record) => {
+    //     // Handle potential nested objects from populated fields
+    //     if (record.showtimeId && typeof record.showtimeId === 'object') {
+    //       if (record.showtimeId.movieId && typeof record.showtimeId.movieId === 'object') {
+    //         return record.showtimeId.movieId.title;
+    //       }
+    //     }
+    //     return 'N/A';
+    //   },
+    // },
+    // {
+    //   title: 'Theater',
+    //   key: 'theater',
+    //   render: (_, record) => {
+    //     // Try to access nested theater info if available
+    //     if (record.showtimeId && typeof record.showtimeId === 'object') {
+    //       if (record.showtimeId.screenId && typeof record.showtimeId.screenId === 'object') {
+    //         if (record.showtimeId.screenId.theaterId && typeof record.showtimeId.screenId.theaterId === 'object') {
+    //           return record.showtimeId.screenId.theaterId.name;
+    //         }
+    //       }
+    //     }
+    //     return 'N/A';
+    //   },
+    // },
     {
       title: 'Date & Time',
       key: 'datetime',
@@ -175,7 +175,7 @@ const MyBookings = () => {
       render: (_, record) => {
         let color = 'blue';
         let text = record.bookingStatus || 'Unknown';
-        
+
         switch (record.bookingStatus) {
           case 'confirmed':
             color = 'green';
@@ -189,7 +189,7 @@ const MyBookings = () => {
           default:
             color = 'blue';
         }
-        
+
         return <Tag color={color}>{text.toUpperCase()}</Tag>;
       },
     },
@@ -199,7 +199,7 @@ const MyBookings = () => {
       render: (_, record) => {
         let color = 'blue';
         let text = record.paymentStatus || 'Unknown';
-        
+
         switch (record.paymentStatus) {
           case 'completed':
             color = 'green';
@@ -214,45 +214,45 @@ const MyBookings = () => {
           default:
             color = 'blue';
         }
-        
+
         return <Tag color={color}>{text.toUpperCase()}</Tag>;
       },
     },
-    {
-      title: 'Actions',
-      key: 'actions',
-      render: (_, record) => {
-        const canCancel = record.bookingStatus !== 'cancelled' && 
-                        new Date(record.showtimeId?.startTime) > new Date(Date.now() + 3 * 60 * 60 * 1000); // 3 hours before showtime
-        
-        return (
-          <div className="space-x-2">
-            <Button
-              type="primary"
-              size="small"
-              onClick={() => handleViewBooking(record._id)}
-            >
-              View
-            </Button>
-            {canCancel && (
-              <Button
-                type="danger"
-                size="small"
-                onClick={() => handleCancelBooking(record._id)}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-        );
-      },
-    },
+    // {
+    //   title: 'Actions',
+    //   key: 'actions',
+    //   render: (_, record) => {
+    //     const canCancel = record.bookingStatus !== 'cancelled' &&
+    //       new Date(record.showtimeId?.startTime) > new Date(Date.now() + 3 * 60 * 60 * 1000); // 3 hours before showtime
+
+    //     return (
+    //       <div className="space-x-2">
+    //         <Button
+    //           type="primary"
+    //           size="small"
+    //           onClick={() => handleViewBooking(record._id)}
+    //         >
+    //           View
+    //         </Button>
+    //         {canCancel && (
+    //           <Button
+    //             type="danger"
+    //             size="small"
+    //             onClick={() => handleCancelBooking(record._id)}
+    //           >
+    //             Cancel
+    //           </Button>
+    //         )}
+    //       </div>
+    //     );
+    //   },
+    // },
   ];
 
   return (
     <div className="max-w-6xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6">My Bookings</h1>
-      
+
       <Table
         dataSource={bookings}
         columns={columns}
