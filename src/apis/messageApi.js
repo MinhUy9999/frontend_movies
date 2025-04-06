@@ -1,9 +1,13 @@
 import { api, handleError } from "./index";
 
 const messageApi = {
-  getUserConversations: async () => {
+  getUserConversations: async (type) => {
     try {
-      const response = await api.get("/chat/conversations");
+      const url = type
+        ? `/chat/conversations?type=${type}`
+        : "/chat/conversations";
+
+      const response = await api.get(url);
       return {
         statusCode: response.status,
         content: response.data.content,
@@ -29,9 +33,15 @@ const messageApi = {
     }
   },
 
-  getOrCreateConversation: async (adminId) => {
+  getOrCreateConversation: async (targetId, options = {}) => {
     try {
-      const response = await api.get(`/chat/conversation/${adminId}`);
+      let url = `/chat/conversation/${targetId}`;
+
+      if (options && options.type === "admin-admin") {
+        url += "?type=admin-admin";
+      }
+
+      const response = await api.get(url);
       return {
         statusCode: response.status,
         content: response.data.content,
@@ -45,9 +55,7 @@ const messageApi = {
 
   getAvailableAdmins: async () => {
     try {
-      console.log("Calling getAvailableAdmins API");
       const response = await api.get("/chat/admins");
-      console.log("API Response:", response);
       return {
         statusCode: response.status,
         content: response.data.content,
@@ -55,7 +63,6 @@ const messageApi = {
         date: new Date().toISOString(),
       };
     } catch (error) {
-      console.error("Complete error in getAvailableAdmins:", error);
       return handleError(error);
     }
   },
@@ -76,10 +83,11 @@ const messageApi = {
     }
   },
 
-  getConversation: async (otherUserId) => {
+  getConversation: async (otherUserId, isAdminToAdmin = false) => {
     try {
       const convResponse = await messageApi.getOrCreateConversation(
-        otherUserId
+        otherUserId,
+        { type: isAdminToAdmin ? "admin-admin" : "user-admin" }
       );
 
       if (convResponse.statusCode !== 200 && convResponse.statusCode !== 201) {

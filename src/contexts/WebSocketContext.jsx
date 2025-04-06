@@ -127,11 +127,19 @@ export const SocketProvider = ({ children }) => {
     });
   }, []);
   
-  const getConversationMessages = useCallback((userId, adminId) => {
-    return messages.filter(msg => 
-      (msg.userId === userId && msg.adminId === adminId) ||
-      (msg.userId === adminId && msg.adminId === userId)
-    ).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const getConversationMessages = useCallback((userId, adminId, isAdminToAdmin = false) => {
+    if (isAdminToAdmin) {
+      return messages.filter(msg => 
+        ((msg.userId === userId && msg.adminId === adminId) ||
+         (msg.userId === adminId && msg.adminId === userId)) && 
+        msg.conversationType === 'admin-admin'
+      ).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    } else {
+      return messages.filter(msg => 
+        (msg.userId === userId && msg.adminId === adminId) ||
+        (msg.userId === adminId && msg.adminId === userId)
+      ).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    }
   }, [messages]);
   
   const sendMessage = useCallback((receiverId, content, callback) => {
@@ -142,8 +150,7 @@ export const SocketProvider = ({ children }) => {
     return socketService.markMessageAsRead(messageId, callback);
   }, []);
   
-  const markConversationAsRead = useCallback((userId, adminId, role) => {
-    // Update local state
+  const markConversationAsRead = useCallback((userId, adminId, role, isAdminToAdmin = false) => {
     setMessages(prev => 
       prev.map(msg => {
         if ((msg.userId === userId && msg.adminId === adminId) &&
@@ -151,11 +158,18 @@ export const SocketProvider = ({ children }) => {
              (role === 'user' && msg.sender === 'admin'))) {
           return { ...msg, isRead: true };
         }
+        
+        if (isAdminToAdmin && 
+            ((msg.userId === userId && msg.adminId === adminId) ||
+             (msg.userId === adminId && msg.adminId === userId)) &&
+            msg.senderId !== user.id) {
+          return { ...msg, isRead: true };
+        }
+        
         return msg;
       })
     );
     
-    // Reset unread count
     const otherId = role === 'admin' ? userId : adminId;
     setUnreadCounts(prev => ({
       ...prev,

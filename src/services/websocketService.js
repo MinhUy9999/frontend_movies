@@ -107,12 +107,18 @@ class SocketService {
 
     this.socket.emit(
       "chat_message",
-      { receiverId: receiverId, content },
+      {
+        receiverId: receiverId,
+        content,
+        isAdminToAdmin:
+          localStorage.getItem("userRole") === "admin" &&
+          document.querySelector("#admin-chat-container")?.dataset
+            ?.activeTab === "admin",
+      },
       (response) => {
         console.log("Socket message response:", response);
 
         if (response && response.success === false) {
-          // Thử gửi qua API
           console.log("Socket failed, trying API...");
           this.sendMessageViaAPI(receiverId, content, callback);
         } else {
